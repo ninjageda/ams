@@ -1,0 +1,425 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Attendance Live Camera Scanner</title>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <style>
+    :root{
+      --bg:#041424;--card:#0b2239;--line:#1c3d59;--teal:#2dd4bf;--green:#22c55e;
+      --red:#f87171;--amber:#fbbf24;--text:#e6f1f7;--muted:#8aa6bd;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px}
+    .wrap{max-width:900px;margin:0 auto}
+    h1{font-size:22px;margin:0 0 4px;letter-spacing:.4px}
+    .sub{color:var(--muted);font-size:14px;margin-bottom:16px;line-height:1.5}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 12px 30px rgba(0,0,0,.25)}
+    .hidden{display:none!important}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+    input[type=text]{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:#061a2d;color:#fff;font-size:15px;outline:none;margin-bottom:8px}
+    input[type=text]:focus{border-color:var(--teal)}
+    .tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+    .tab{padding:12px;border-radius:12px;border:1px solid var(--line);background:#061a2d;color:var(--muted);font-weight:700;cursor:pointer;font-size:15px}
+    .tab.active{background:linear-gradient(135deg,#1d5fa8,#12a3a5);color:#fff;border-color:transparent}
+    .btn{appearance:none;border:0;border-radius:12px;padding:14px 18px;font-size:15px;font-weight:700;cursor:pointer;background:var(--teal);color:#04202b}
+    .btn.alt{background:#173b59;color:var(--text)}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px}
+    .video-wrap{position:relative;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:4/3}
+    video{width:100%;height:100%;object-fit:cover;display:block}
+    video.mirror{transform:scaleX(-1)}
+    .frame{position:absolute;inset:18% 18%;border:3px solid rgba(45,212,191,.85);border-radius:18px;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,.25)}
+    .frame.circle{inset:auto;width:210px;height:210px;top:50%;left:50%;transform:translate(-50%,-50%);border-radius:50%}
+    #result{margin-top:12px;padding:14px;border-radius:12px;background:#061a2d;border:1px solid var(--line);min-height:52px;line-height:1.45;font-weight:600}
+    #result.ok{border-color:var(--green);color:#bbf7d0}
+    #result.bad{border-color:var(--red);color:#fecaca}
+    #result.info{border-color:var(--amber);color:#fde68a}
+    #status{font-size:13px;color:var(--muted);margin-top:8px}
+    .file-input{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+    .file-label{display:inline-flex;align-items:center;justify-content:center;padding:14px 18px;border-radius:12px;background:#173b59;color:var(--text);font-weight:700;cursor:pointer;font-size:15px}
+    @media (max-width:600px){ body{padding:10px} .card{padding:12px} .btn,.file-label{flex:1 1 45%;text-align:center} }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="pageHeader">Attendance Live Camera Scanner</h1>
+  <div class="sub">Top-level HTTPS scanner — full live camera access enabled.</div>
+
+  <div class="card" id="connectCard">
+    <label for="serverUrl">Apps Script web app URL (/exec)</label>
+    <input id="serverUrl" type="text" spellcheck="false" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec">
+    <div id="keyWrap" class="hidden">
+      <label for="kioskKeyInput">Kiosk Key (required by administrator)</label>
+      <input id="kioskKeyInput" type="text" spellcheck="false" autocomplete="off" placeholder="KIOSK KEY">
+    </div>
+    <div class="row">
+      <button class="btn" id="btnConnect">Connect</button>
+    </div>
+    <div id="status">Enter the published /exec URL, then tap Connect.</div>
+  </div>
+
+  <div class="card">
+    <div class="tabs">
+      <button class="tab active" id="tabQr">▦ Scan QR Code</button>
+      <button class="tab" id="tabFace">☻ Face Recognition</button>
+    </div>
+
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn" id="btnStart">▶ Start live camera</button>
+      <button class="btn hidden" id="btnVerifyFace">◎ Verify &amp; record face</button>
+      <button class="btn alt" id="btnStop">■ Stop</button>
+      <label class="file-label" for="scanPhoto">📷 Take photo</label>
+      <input class="file-input" id="scanPhoto" type="file" accept="image/*" capture="environment">
+    </div>
+
+    <div class="video-wrap">
+      <video id="video" playsinline muted></video>
+      <div class="frame" id="guideFrame"></div>
+    </div>
+    <div id="result">Ready.</div>
+  </div>
+
+  <div class="card">
+    <label for="manualCode">Manual / USB barcode-scanner entry</label>
+    <div class="row" style="margin-top:0">
+      <input id="manualCode" type="text" placeholder="ATTEND|EMP...|1|SIGNATURE" spellcheck="false" autocomplete="off" style="margin:0;flex:1">
+      <button class="btn" id="btnManual">Record</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+  let SERVER = '';
+  let TOKEN = '';
+  let KIOSK_KEY = '';
+  let MODE = 'QR'; // 'QR' or 'FACE'
+  let THRESHOLD = 0.6;
+  let stream = null;
+  let scanning = false;
+  let busy = false;
+  let lastCode = '';
+  let modelsLoaded = false;
+  let descriptors = [];
+  let faceFailed = false;
+
+  const $ = id => document.getElementById(id);
+  const video = $('video');
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  function setStatus(msg) { $('status').textContent = msg; }
+  function show(msg, kind) {
+    const el = $('result');
+    el.textContent = msg;
+    el.className = kind || '';
+  }
+
+  function serverCall(action, extra) {
+    if (!SERVER) return Promise.reject(new Error('Set the Apps Script web app URL first.'));
+    return new Promise((resolve, reject) => {
+      const cb = '__attend_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
+      const pairs = Object.keys(extra || {}).filter(k => extra[k] !== undefined && extra[k] !== '').map(k =>
+        encodeURIComponent(k) + '=' + encodeURIComponent(extra[k]));
+      const sep = SERVER.indexOf('?') >= 0 ? '&' : '?';
+      const url = SERVER + sep + 'action=' + encodeURIComponent(action) +
+        '&callback=' + cb + '&t=' + Date.now() + (pairs.length ? '&' + pairs.join('&') : '');
+      let script;
+      const timer = setTimeout(() => { cleanup(); reject(new Error('Server did not respond. Check the URL and deployment.')); }, 15000);
+      function cleanup() {
+        clearTimeout(timer);
+        try { delete window[cb]; } catch (e) {}
+        if (script && script.parentNode) script.parentNode.removeChild(script);
+      }
+      window[cb] = res => {
+        cleanup();
+        if (res && res.success === false) {
+          const err = new Error((res.code ? '[' + res.code + '] ' : '') + (res.message || 'Request failed'));
+          err.code = res.code;
+          reject(err);
+        } else {
+          resolve(res || {});
+        }
+      };
+      script = document.createElement('script');
+      script.src = url;
+      script.async = true;
+      script.onerror = () => { cleanup(); reject(new Error('Cannot reach the Apps Script server.')); };
+      document.head.appendChild(script);
+    });
+  }
+
+  async function connect() {
+    SERVER = $('serverUrl').value.trim().replace(/\/+$/, '');
+    KIOSK_KEY = $('kioskKeyInput').value.trim().toUpperCase();
+    if (!SERVER) throw new Error('Enter the published /exec URL first.');
+    localStorage.setItem('att_scanner_server', SERVER);
+    if (KIOSK_KEY) localStorage.setItem('att_scanner_key', KIOSK_KEY);
+
+    setStatus('Connecting to Apps Script…');
+    try {
+      const cfg = await serverCall('scannerConfig', { kioskKey: KIOSK_KEY });
+      TOKEN = cfg.token || '';
+      THRESHOLD = cfg.threshold || 0.6;
+      if (cfg.agencyName) $('pageHeader').textContent = cfg.agencyName + ' — Scanner';
+      $('tabFace').classList.toggle('hidden', cfg.faceEnabled === false);
+      if (cfg.webAppUrl && cfg.webAppUrl.indexOf('/exec') > 0) {
+        SERVER = String(cfg.webAppUrl).replace(/\/+$/, '');
+        $('serverUrl').value = SERVER;
+        localStorage.setItem('att_scanner_server', SERVER);
+      }
+      if (!TOKEN) throw new Error('Scanner token missing. Re-run setupSystem() in Apps Script.');
+      setStatus('Connected. Ready to scan.');
+      show('Connected. Tap "Start live camera".', 'info');
+      if (cfg.faceEnabled !== false) {
+        serverCall('scannerDescriptors', { token: TOKEN }).then(r => { descriptors = r.descriptors || []; }).catch(() => {});
+      }
+      return cfg;
+    } catch (e) {
+      if (e.code === 'UNAUTHORIZED' || /KIOSK_UNAUTHORIZED/i.test(e.message)) {
+        $('keyWrap').classList.remove('hidden');
+        throw new Error('Kiosk key required. Enter the Kiosk Key above and tap Connect.');
+      }
+      throw e;
+    }
+  }
+
+  function stopCamera() {
+    scanning = false;
+    $('btnVerifyFace').classList.add('hidden');
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    video.srcObject = null;
+  }
+
+  async function loadFaceModels() {
+    if (modelsLoaded) return;
+    if (!window.faceapi) throw new Error('face-api.js failed to load.');
+    show('Loading face recognition models…', 'info');
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+    ]);
+    modelsLoaded = true;
+  }
+
+  async function startCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Camera API unavailable. Open over HTTPS.');
+    }
+    if (!TOKEN) await connect();
+    stopCamera();
+
+    const wantFace = MODE === 'FACE';
+    if (wantFace) await loadFaceModels();
+
+    const constraints = wantFace
+      ? { video: { facingMode: { ideal: 'user' } }, audio: false }
+      : { video: { facingMode: { ideal: 'environment' } }, audio: false };
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (e1) {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+
+    video.classList.toggle('mirror', wantFace);
+    $('guideFrame').classList.toggle('circle', wantFace);
+    video.srcObject = stream;
+    await video.play();
+
+    if (wantFace) {
+      $('btnVerifyFace').classList.remove('hidden');
+      setStatus('Camera running — position your face in the circle.');
+      show('Look at the camera, then tap "Verify & record face".', 'info');
+    } else {
+      if (!window.jsQR) throw new Error('QR decoder not loaded.');
+      scanning = true;
+      lastCode = '';
+      busy = false;
+      setStatus('Live QR scanner active.');
+      show('Hold your QR code inside the frame.', 'info');
+      scanLoop();
+    }
+  }
+
+  function decodeFrame() {
+    if (!video.videoWidth || !video.videoHeight) return '';
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+    return code && code.data ? code.data : '';
+  }
+
+  function scanLoop() {
+    if (!scanning) return;
+    if (!busy) {
+      const text = decodeFrame();
+      if (text && text !== lastCode) handleQrCode(text);
+    }
+    requestAnimationFrame(scanLoop);
+  }
+
+  async function handleQrCode(text) {
+    busy = true;
+    lastCode = text;
+    show('Recording scan…', 'info');
+    try {
+      const r = await serverCall('scannerRecord', {
+        token: TOKEN,
+        method: 'QR',
+        qr: text,
+        verification: faceFailed ? 'QR_FALLBACK' : '',
+        device: navigator.userAgent
+      });
+      faceFailed = false;
+      show('✓ ' + (r.message || 'Attendance recorded.'), 'ok');
+    } catch (e) {
+      show('⚠ ' + (e.message || 'Recording failed.'), 'bad');
+    }
+    setTimeout(() => { busy = false; lastCode = ''; }, 4000);
+  }
+
+  function distance(a, b) {
+    if (!a || !b || a.length !== b.length) return 999;
+    let s = 0; for (let i = 0; i < a.length; i++) s += (a[i] - b[i]) * (a[i] - b[i]);
+    return Math.sqrt(s);
+  }
+
+  async function verifyFace() {
+    if (busy) return;
+    busy = true;
+    show('Scanning face…', 'info');
+    try {
+      const det = await faceapi.detectSingleFace(
+        video,
+        new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })
+      ).withFaceLandmarks().withFaceDescriptor();
+      if (!det) throw new Error('No face detected. Adjust lighting and try again.');
+      if (!descriptors.length) {
+        const res = await serverCall('scannerDescriptors', { token: TOKEN });
+        descriptors = res.descriptors || [];
+      }
+      if (!descriptors.length) throw new Error('No employees are enrolled for face recognition.');
+
+      const desc = Array.from(det.descriptor);
+      let best = null, dist = 999;
+      descriptors.forEach(d => {
+        const dd = distance(desc, d.descriptor);
+        if (dd < dist) { dist = dd; best = d; }
+      });
+
+      if (!best || dist > THRESHOLD) {
+        faceFailed = true;
+        switchTab('QR');
+        throw new Error('Face not recognized. Switched to QR — entry will be flagged for HR review.');
+      }
+
+      const r = await serverCall('scannerRecord', {
+        token: TOKEN,
+        method: 'FACE',
+        employeeId: best.employeeId,
+        device: navigator.userAgent
+      });
+      show('✓ ' + (r.message || 'Face verified & recorded.'), 'ok');
+    } catch (e) {
+      show('⚠ ' + (e.message || 'Face verification failed.'), 'bad');
+    } finally {
+      busy = false;
+    }
+  }
+
+  function switchTab(mode) {
+    stopCamera();
+    MODE = mode;
+    $('tabQr').classList.toggle('active', mode === 'QR');
+    $('tabFace').classList.toggle('active', mode === 'FACE');
+    $('scanPhoto').setAttribute('capture', mode === 'FACE' ? 'user' : 'environment');
+    show('Ready (' + (mode === 'FACE' ? 'Face Recognition' : 'QR Code') + ').', 'info');
+  }
+
+  function loadImage(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read image.')); };
+      img.src = url;
+    });
+  }
+
+  async function scanPhoto(file) {
+    if (!file) return;
+    if (!TOKEN) {
+      try { await connect(); } catch (e) { return show(e.message, 'bad'); }
+    }
+    if (MODE === 'FACE') {
+      try {
+        await loadFaceModels();
+        show('Analyzing face photo…', 'info');
+        const img = await loadImage(file);
+        const det = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+          .withFaceLandmarks().withFaceDescriptor();
+        if (!det) throw new Error('No face detected in photo.');
+        if (!descriptors.length) {
+          const res = await serverCall('scannerDescriptors', { token: TOKEN });
+          descriptors = res.descriptors || [];
+        }
+        const desc = Array.from(det.descriptor);
+        let best = null, dist = 999;
+        descriptors.forEach(d => { const dd = distance(desc, d.descriptor); if (dd < dist) { dist = dd; best = d; } });
+        if (!best || dist > THRESHOLD) {
+          faceFailed = true;
+          switchTab('QR');
+          throw new Error('Face not recognized. Switched to QR fallback.');
+        }
+        const r = await serverCall('scannerRecord', { token: TOKEN, method: 'FACE', employeeId: best.employeeId, device: navigator.userAgent });
+        show('✓ ' + (r.message || 'Face verified.'), 'ok');
+      } catch (e) { show('⚠ ' + (e.message || e), 'bad'); }
+      return;
+    }
+
+    try {
+      const img = await loadImage(file);
+      const scale = Math.min(1, 1600 / Math.max(img.width || 1, img.height || 1));
+      canvas.width = Math.round((img.width || 1) * scale);
+      canvas.height = Math.round((img.height || 1) * scale);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'attemptBoth' });
+      if (!code || !code.data) return show('No QR code found in photo.', 'bad');
+      handleQrCode(code.data);
+    } catch (e) { show(e.message || 'Photo scan failed.', 'bad'); }
+  }
+
+  $('tabQr').addEventListener('click', () => switchTab('QR'));
+  $('tabFace').addEventListener('click', () => switchTab('FACE'));
+  $('btnConnect').addEventListener('click', () => connect().catch(e => { setStatus(e.message); show(e.message, 'bad'); }));
+  $('btnStart').addEventListener('click', () => startCamera().catch(e => { setStatus(e.message); show(e.message, 'bad'); }));
+  $('btnVerifyFace').addEventListener('click', verifyFace);
+  $('btnStop').addEventListener('click', () => { stopCamera(); setStatus('Camera stopped.'); show('Camera stopped.', 'info'); });
+  $('btnManual').addEventListener('click', () => {
+    const text = $('manualCode').value.trim();
+    if (!text) return show('Enter a QR code first.', 'bad');
+    $('manualCode').value = '';
+    handleQrCode(text);
+  });
+  $('manualCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnManual').click(); });
+  $('scanPhoto').addEventListener('change', e => { scanPhoto(e.target.files && e.target.files[0]); e.target.value = ''; });
+
+  const qs = new URLSearchParams(location.search);
+  const initialServer = qs.get('server') || localStorage.getItem('att_scanner_server') || '';
+  const initialKey = qs.get('key') || localStorage.getItem('att_scanner_key') || '';
+  if (initialKey) $('kioskKeyInput').value = initialKey;
+  if (initialServer) {
+    $('serverUrl').value = initialServer;
+    connect().catch(e => { setStatus(e.message); show(e.message, 'bad'); });
+  }
+</script>
+</body>
+</html>
