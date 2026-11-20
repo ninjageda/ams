@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://script.google.com https://script.googleusercontent.com; connect-src 'self' https://justadudewhohacks.github.io https://cdn.jsdelivr.net; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none';">
   <title>Attendance Live Camera Scanner</title>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
@@ -19,13 +21,14 @@
     .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 12px 30px rgba(0,0,0,.25)}
     .hidden{display:none!important}
     label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
-    input[type=text]{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:#061a2d;color:#fff;font-size:15px;outline:none;margin-bottom:8px}
-    input[type=text]:focus{border-color:var(--teal)}
+    input[type=text],input[type=password]{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:#061a2d;color:#fff;font-size:15px;outline:none;margin-bottom:8px}
+    input:focus{border-color:var(--teal)}
     .tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
     .tab{padding:12px;border-radius:12px;border:1px solid var(--line);background:#061a2d;color:var(--muted);font-weight:700;cursor:pointer;font-size:15px}
     .tab.active{background:linear-gradient(135deg,#1d5fa8,#12a3a5);color:#fff;border-color:transparent}
     .btn{appearance:none;border:0;border-radius:12px;padding:14px 18px;font-size:15px;font-weight:700;cursor:pointer;background:var(--teal);color:#04202b}
     .btn.alt{background:#173b59;color:var(--text)}
+    .btn.danger{background:#7f1d1d;color:#fecaca}
     .btn:disabled{opacity:.5;cursor:not-allowed}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px}
     .video-wrap{position:relative;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:4/3}
@@ -46,19 +49,20 @@
 <body>
 <div class="wrap">
   <h1 id="pageHeader">Attendance Live Camera Scanner</h1>
-  <div class="sub">Top-level HTTPS scanner — full live camera access enabled.</div>
+  <div class="sub">Authorized Kiosk Terminal — requires valid Apps Script endpoint and Kiosk Key.</div>
 
   <div class="card" id="connectCard">
     <label for="serverUrl">Apps Script web app URL (/exec)</label>
     <input id="serverUrl" type="text" spellcheck="false" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec">
-    <div id="keyWrap" class="hidden">
-      <label for="kioskKeyInput">Kiosk Key (required by administrator)</label>
-      <input id="kioskKeyInput" type="text" spellcheck="false" autocomplete="off" placeholder="KIOSK KEY">
+    <div id="keyWrap">
+      <label for="kioskKeyInput">Kiosk Key</label>
+      <input id="kioskKeyInput" type="password" spellcheck="false" autocomplete="off" placeholder="Enter Kiosk Key">
     </div>
     <div class="row">
-      <button class="btn" id="btnConnect">Connect</button>
+      <button class="btn" id="btnConnect">Connect &amp; Pair</button>
+      <button class="btn danger hidden" id="btnUnpair">Unpair Tablet</button>
     </div>
-    <div id="status">Enter the published /exec URL, then tap Connect.</div>
+    <div id="status">Enter your Apps Script /exec URL and Kiosk Key, then tap Connect &amp; Pair.</div>
   </div>
 
   <div class="card">
@@ -79,13 +83,13 @@
       <video id="video" playsinline muted></video>
       <div class="frame" id="guideFrame"></div>
     </div>
-    <div id="result">Ready.</div>
+    <div id="result">Waiting for pairing…</div>
   </div>
 
   <div class="card">
     <label for="manualCode">Manual / USB barcode-scanner entry</label>
     <div class="row" style="margin-top:0">
-      <input id="manualCode" type="text" placeholder="ATTEND|EMP...|1|SIGNATURE" spellcheck="false" autocomplete="off" style="margin:0;flex:1">
+      <input id="manualCode" type="password" placeholder="Scan or enter QR token" spellcheck="false" autocomplete="off" style="margin:0;flex:1">
       <button class="btn" id="btnManual">Record</button>
     </div>
   </div>
@@ -93,10 +97,11 @@
 
 <script>
   const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+  const EXEC_RE = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+
   let SERVER = '';
   let TOKEN = '';
-  let KIOSK_KEY = '';
-  let MODE = 'QR'; // 'QR' or 'FACE'
+  let MODE = 'QR';
   let THRESHOLD = 0.6;
   let stream = null;
   let scanning = false;
@@ -118,14 +123,21 @@
     el.className = kind || '';
   }
 
+  function validateServerUrl(raw) {
+    const clean = String(raw || '').trim().split('?')[0].replace(/\/+$/, '');
+    if (!EXEC_RE.test(clean)) {
+      throw new Error('Invalid URL. Must be an official https://script.google.com/macros/s/.../exec deployment.');
+    }
+    return clean;
+  }
+
   function serverCall(action, extra) {
-    if (!SERVER) return Promise.reject(new Error('Set the Apps Script web app URL first.'));
+    const validServer = validateServerUrl(SERVER);
     return new Promise((resolve, reject) => {
       const cb = '__attend_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
       const pairs = Object.keys(extra || {}).filter(k => extra[k] !== undefined && extra[k] !== '').map(k =>
         encodeURIComponent(k) + '=' + encodeURIComponent(extra[k]));
-      const sep = SERVER.indexOf('?') >= 0 ? '&' : '?';
-      const url = SERVER + sep + 'action=' + encodeURIComponent(action) +
+      const url = validServer + '?action=' + encodeURIComponent(action) +
         '&callback=' + cb + '&t=' + Date.now() + (pairs.length ? '&' + pairs.join('&') : '');
       let script;
       const timer = setTimeout(() => { cleanup(); reject(new Error('Server did not respond. Check the URL and deployment.')); }, 15000);
@@ -147,44 +159,57 @@
       script = document.createElement('script');
       script.src = url;
       script.async = true;
+      script.referrerPolicy = 'no-referrer';
       script.onerror = () => { cleanup(); reject(new Error('Cannot reach the Apps Script server.')); };
       document.head.appendChild(script);
     });
   }
 
-  async function connect() {
-    SERVER = $('serverUrl').value.trim().replace(/\/+$/, '');
-    KIOSK_KEY = $('kioskKeyInput').value.trim().toUpperCase();
-    if (!SERVER) throw new Error('Enter the published /exec URL first.');
+  async function connect(savedToken) {
+    SERVER = validateServerUrl($('serverUrl').value);
+    const enteredKey = $('kioskKeyInput').value.trim().toUpperCase();
     localStorage.setItem('att_scanner_server', SERVER);
-    if (KIOSK_KEY) localStorage.setItem('att_scanner_key', KIOSK_KEY);
 
     setStatus('Connecting to Apps Script…');
     try {
-      const cfg = await serverCall('scannerConfig', { kioskKey: KIOSK_KEY });
-      TOKEN = cfg.token || '';
+      const params = savedToken ? { token: savedToken } : { kioskKey: enteredKey };
+      const cfg = await serverCall('scannerConfig', params);
+      TOKEN = cfg.token || savedToken || '';
       THRESHOLD = cfg.threshold || 0.6;
+      if (!TOKEN) throw new Error('Scanner token missing. Check Kiosk Key.');
+
+      sessionStorage.setItem('att_scanner_token', TOKEN);
+      $('kioskKeyInput').value = '';
+      $('keyWrap').classList.add('hidden');
+      $('btnUnpair').classList.remove('hidden');
+
       if (cfg.agencyName) $('pageHeader').textContent = cfg.agencyName + ' — Scanner';
       $('tabFace').classList.toggle('hidden', cfg.faceEnabled === false);
-      if (cfg.webAppUrl && cfg.webAppUrl.indexOf('/exec') > 0) {
-        SERVER = String(cfg.webAppUrl).replace(/\/+$/, '');
-        $('serverUrl').value = SERVER;
-        localStorage.setItem('att_scanner_server', SERVER);
-      }
-      if (!TOKEN) throw new Error('Scanner token missing. Re-run setupSystem() in Apps Script.');
-      setStatus('Connected. Ready to scan.');
+      setStatus('Paired & connected.');
       show('Connected. Tap "Start live camera".', 'info');
+
       if (cfg.faceEnabled !== false) {
         serverCall('scannerDescriptors', { token: TOKEN }).then(r => { descriptors = r.descriptors || []; }).catch(() => {});
       }
       return cfg;
     } catch (e) {
-      if (e.code === 'UNAUTHORIZED' || /KIOSK_UNAUTHORIZED/i.test(e.message)) {
-        $('keyWrap').classList.remove('hidden');
-        throw new Error('Kiosk key required. Enter the Kiosk Key above and tap Connect.');
-      }
+      sessionStorage.removeItem('att_scanner_token');
+      TOKEN = '';
+      $('keyWrap').classList.remove('hidden');
+      $('btnUnpair').classList.add('hidden');
       throw e;
     }
+  }
+
+  function unpair() {
+    stopCamera();
+    TOKEN = '';
+    descriptors = [];
+    sessionStorage.removeItem('att_scanner_token');
+    $('keyWrap').classList.remove('hidden');
+    $('btnUnpair').classList.add('hidden');
+    setStatus('Unpaired. Enter Kiosk Key to reconnect.');
+    show('Tablet unpaired.', 'info');
   }
 
   function stopCamera() {
@@ -266,6 +291,7 @@
   }
 
   async function handleQrCode(text) {
+    if (!TOKEN) return show('Pair the tablet first.', 'bad');
     busy = true;
     lastCode = text;
     show('Recording scan…', 'info');
@@ -275,7 +301,7 @@
         method: 'QR',
         qr: text,
         verification: faceFailed ? 'QR_FALLBACK' : '',
-        device: navigator.userAgent
+        device: navigator.userAgent.slice(0, 120)
       });
       faceFailed = false;
       show('✓ ' + (r.message || 'Attendance recorded.'), 'ok');
@@ -292,6 +318,7 @@
   }
 
   async function verifyFace() {
+    if (!TOKEN) return show('Pair the tablet first.', 'bad');
     if (busy) return;
     busy = true;
     show('Scanning face…', 'info');
@@ -324,7 +351,7 @@
         token: TOKEN,
         method: 'FACE',
         employeeId: best.employeeId,
-        device: navigator.userAgent
+        device: navigator.userAgent.slice(0, 120)
       });
       show('✓ ' + (r.message || 'Face verified & recorded.'), 'ok');
     } catch (e) {
@@ -378,7 +405,7 @@
           switchTab('QR');
           throw new Error('Face not recognized. Switched to QR fallback.');
         }
-        const r = await serverCall('scannerRecord', { token: TOKEN, method: 'FACE', employeeId: best.employeeId, device: navigator.userAgent });
+        const r = await serverCall('scannerRecord', { token: TOKEN, method: 'FACE', employeeId: best.employeeId, device: navigator.userAgent.slice(0, 120) });
         show('✓ ' + (r.message || 'Face verified.'), 'ok');
       } catch (e) { show('⚠ ' + (e.message || e), 'bad'); }
       return;
@@ -400,6 +427,7 @@
   $('tabQr').addEventListener('click', () => switchTab('QR'));
   $('tabFace').addEventListener('click', () => switchTab('FACE'));
   $('btnConnect').addEventListener('click', () => connect().catch(e => { setStatus(e.message); show(e.message, 'bad'); }));
+  $('btnUnpair').addEventListener('click', unpair);
   $('btnStart').addEventListener('click', () => startCamera().catch(e => { setStatus(e.message); show(e.message, 'bad'); }));
   $('btnVerifyFace').addEventListener('click', verifyFace);
   $('btnStop').addEventListener('click', () => { stopCamera(); setStatus('Camera stopped.'); show('Camera stopped.', 'info'); });
@@ -412,13 +440,18 @@
   $('manualCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnManual').click(); });
   $('scanPhoto').addEventListener('change', e => { scanPhoto(e.target.files && e.target.files[0]); e.target.value = ''; });
 
+  // Strip any query string from the address bar so URLs/keys are never exposed in browser history
   const qs = new URLSearchParams(location.search);
   const initialServer = qs.get('server') || localStorage.getItem('att_scanner_server') || '';
-  const initialKey = qs.get('key') || localStorage.getItem('att_scanner_key') || '';
-  if (initialKey) $('kioskKeyInput').value = initialKey;
+  if (location.search && window.history && window.history.replaceState) {
+    window.history.replaceState({}, document.title, location.pathname);
+  }
+  const savedToken = sessionStorage.getItem('att_scanner_token') || '';
   if (initialServer) {
     $('serverUrl').value = initialServer;
-    connect().catch(e => { setStatus(e.message); show(e.message, 'bad'); });
+    if (savedToken) {
+      connect(savedToken).catch(e => { setStatus(e.message); show(e.message, 'bad'); });
+    }
   }
 </script>
 </body>
