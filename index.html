@@ -1,9 +1,13 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 <head>
-  <base target="_top">
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://script.google.com https://script.googleusercontent.com; connect-src 'self' https://justadudewhohacks.github.io https://cdn.jsdelivr.net; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none';">
   <title>Attendance Kiosk</title>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <style>
 :root{
   --navy:#0b2743; --navy2:#123a63; --blue:#2471c4; --teal:#12a3a5;
@@ -17,69 +21,77 @@ body{font-family:'Segoe UI',Roboto,Arial,sans-serif;background:var(--bg);color:v
 .hidden{display:none!important}
 button,input{font:inherit}
 
-/* Pairing */
+/* Pairing Screen */
 .pair-screen{min-height:100vh;display:grid;place-items:center;padding:24px;
   background:radial-gradient(circle at 25% 20%,#174a7a 0,#0b2743 55%,#061729 100%)}
-.pair-card{width:100%;max-width:520px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:32px;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.5)}
+.pair-card{width:100%;max-width:540px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:32px;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.5)}
 .pair-card .logo{font-size:46px;color:var(--teal)}
 .pair-card h1{font-size:24px;margin:12px 0 6px}
-.pair-card p{color:var(--muted);font-size:14px;line-height:1.5}
-.pair-card input{width:100%;padding:16px;margin:18px 0 12px;border-radius:10px;border:1px solid var(--line);background:#0a2138;color:#fff;font-size:20px;text-align:center;letter-spacing:3px;text-transform:uppercase;outline:none}
+.pair-card p{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:18px}
+.field-lbl{display:block;text-align:left;font-size:12px;color:var(--muted);margin:10px 0 5px;font-weight:600;letter-spacing:.3px}
+.pair-card input[type=text]{width:100%;padding:14px;border-radius:10px;border:1px solid var(--line);background:#0a2138;color:#fff;font-size:14px;outline:none}
+.pair-card input[type=password]{width:100%;padding:16px;margin-bottom:14px;border-radius:10px;border:1px solid var(--line);background:#0a2138;color:#fff;font-size:20px;text-align:center;letter-spacing:3px;text-transform:uppercase;outline:none}
 .pair-card input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(18,163,165,.2)}
 .pair-btn{width:100%;padding:15px;border:0;border-radius:10px;background:linear-gradient(135deg,#2471c4,#12a3a5);color:#fff;font-size:17px;font-weight:700;cursor:pointer}
 .pair-btn:disabled{opacity:.6;cursor:wait}
 .pair-note{margin-top:18px;font-size:12px;color:var(--muted)}
 .pair-msg{margin-top:12px;font-size:13px;color:#ffb3ae;min-height:18px}
 
-/* Layout */
+/* Kiosk App Layout */
 #kioskApp{height:100vh;display:flex;flex-direction:column}
 .kiosk-head{height:78px;flex:0 0 78px;display:flex;align-items:center;padding:0 26px;background:linear-gradient(90deg,#0e2f52,#123a63);border-bottom:1px solid var(--line)}
 .kiosk-brand{display:flex;align-items:center;gap:12px}
 .kiosk-brand .bi{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#2471c4,#12a3a5);display:grid;place-items:center;font-size:22px}
 .kiosk-brand b{font-size:19px;letter-spacing:.5px;display:block}
 .kiosk-brand small{color:var(--muted);font-size:12px}
-.kiosk-clock{margin-left:auto;text-align:right}
+.kiosk-right{margin-left:auto;display:flex;align-items:center;gap:16px}
+.kiosk-clock{text-align:right}
 .kiosk-clock #clockTime{font-size:28px;font-weight:700;letter-spacing:1px;font-variant-numeric:tabular-nums}
 .kiosk-clock #clockDate{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.unpair-btn{padding:8px 12px;border-radius:9px;border:1px solid rgba(217,83,79,.45);background:rgba(217,83,79,.16);color:#ffb3ae;font-size:12px;font-weight:700;cursor:pointer}
+.unpair-btn:hover{background:rgba(217,83,79,.3)}
 .kiosk-content{flex:1;min-height:0;display:grid;grid-template-columns:minmax(340px,34%) 1fr;gap:14px;padding:14px}
 
-/* Action panel */
+/* Action Panel (Left) */
 .action-panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;min-height:0}
 .action-panel h2,.board-head h2{margin:0;font-size:17px;letter-spacing:.3px}
 .method-switch{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0 14px}
-.method{font-size:14px;padding:14px 6px}
-.manual-pane{justify-content:center;gap:12px}
-.manual-pane input{width:100%;padding:18px;border-radius:12px;border:1px solid var(--line);background:#061a2d;color:#fff;font-size:18px;letter-spacing:1px;outline:none}
-.manual-pane input:focus{border-color:var(--teal)}
-.manual-pane .big-btn{width:100%;flex:0 0 auto}
-.label-btn{display:flex;align-items:center;justify-content:center;text-align:center;cursor:pointer}
-.file-input{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
-.standalone-link{display:block;text-align:center;margin:-4px 0 14px;padding:12px;border:1px solid var(--teal);border-radius:12px;background:rgba(18,163,165,.12);color:#5eead4;font-weight:700;text-decoration:none;font-size:14px}
-.standalone-link:hover{background:rgba(18,163,165,.22)}
-.method{padding:16px 10px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font-size:16px;font-weight:700;cursor:pointer;transition:.15s}
+.method{padding:14px 6px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font-size:14px;font-weight:700;cursor:pointer;transition:.15s}
 .method:hover{border-color:var(--teal);color:#fff}
 .method.active{background:linear-gradient(135deg,#1d5fa8,#12a3a5);color:#fff;border-color:transparent;box-shadow:0 8px 20px rgba(18,163,165,.24)}
 .method-pane{display:none;flex:1;min-height:0;flex-direction:column}
 .method-pane.active{display:flex}
-.scanner-wrap{background:#061a2d;border-radius:14px;overflow:hidden;min-height:220px;flex:1;display:grid;place-items:center;position:relative}
-.scanner-wrap #qrReader{width:100%}
-.scanner-wrap video{width:100%!important}
-.scanner-hint{position:absolute;bottom:10px;left:10px;right:10px;text-align:center;color:#8fb0cd;font-size:12px;pointer-events:none}
-.face-wrap{background:#061a2d;border-radius:14px;overflow:hidden;flex:1;min-height:220px;position:relative;display:grid;place-items:center}
-.face-wrap video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
-.face-ring{position:absolute;width:180px;height:180px;border:3px solid var(--teal);border-radius:50%;box-shadow:0 0 0 9999px rgba(3,15,28,.45);pointer-events:none}
+
+.scanner-wrap{background:#061a2d;border-radius:14px;overflow:hidden;min-height:230px;flex:1;display:grid;place-items:center;position:relative}
+.scanner-wrap video,.face-wrap video{width:100%;height:100%;object-fit:cover;display:block}
+.face-wrap video,.scanner-wrap video.mirror{transform:scaleX(-1)}
+.qr-box{position:absolute;inset:18% 18%;border:3px solid rgba(18,163,165,.85);border-radius:18px;pointer-events:none;box-shadow:0 0 0 9999px rgba(3,15,28,.35)}
+.scanner-hint{position:absolute;bottom:10px;left:10px;right:10px;text-align:center;color:#8fb0cd;font-size:12px;pointer-events:none;background:rgba(3,15,28,.65);padding:6px 10px;border-radius:8px}
+
+.face-wrap{background:#061a2d;border-radius:14px;overflow:hidden;flex:1;min-height:230px;position:relative;display:grid;place-items:center}
+.face-ring{position:absolute;width:190px;height:190px;border:3px solid var(--teal);border-radius:50%;box-shadow:0 0 0 9999px rgba(3,15,28,.45);pointer-events:none}
 .face-msg{position:absolute;bottom:12px;left:12px;right:12px;background:rgba(3,15,28,.75);padding:9px;border-radius:8px;text-align:center;font-size:13px;z-index:2}
-.action-btns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
-.big-btn{flex:1;padding:13px 10px;border:0;border-radius:11px;background:linear-gradient(135deg,#2471c4,#12a3a5);color:#fff;font-size:15px;font-weight:700;cursor:pointer}
+
+.manual-pane{justify-content:center;gap:12px}
+.manual-pane input{width:100%;padding:18px;border-radius:12px;border:1px solid var(--line);background:#061a2d;color:#fff;font-size:18px;letter-spacing:1px;outline:none}
+.manual-pane input:focus{border-color:var(--teal)}
+.manual-pane .big-btn{width:100%;flex:0 0 auto}
+
+.action-btns{display:flex;gap:10px;margin-top:12px}
+.big-btn{flex:1;padding:14px;border:0;border-radius:11px;background:linear-gradient(135deg,#2471c4,#12a3a5);color:#fff;font-size:15px;font-weight:700;cursor:pointer}
 .big-btn.alt{background:var(--panel2);border:1px solid var(--line);color:var(--ink)}
 .big-btn:disabled{opacity:.5;cursor:not-allowed}
-.result-banner{margin-top:12px;padding:14px;border-radius:12px;background:linear-gradient(135deg,#0f7a55,#12a3a5);border:1px solid rgba(255,255,255,.2);animation:pop .25s ease-out}
+.label-btn{display:flex;align-items:center;justify-content:center;text-align:center;cursor:pointer}
+.file-input{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+
+.result-banner{margin-top:12px;padding:16px;border-radius:12px;background:linear-gradient(135deg,#0f7a55,#12a3a5);border:1px solid rgba(255,255,255,.2);animation:pop .25s ease-out}
 .result-banner.bad{background:linear-gradient(135deg,#9e3b2f,#d9534f)}
+.result-banner.info{background:linear-gradient(135deg,#1d5fa8,#123a63)}
 .result-banner .rb-name{font-size:20px;font-weight:800}
-.result-banner .rb-detail{font-size:13px;opacity:.9;margin-top:3px}
+.result-banner .rb-detail{font-size:13px;opacity:.92;margin-top:3px}
 @keyframes pop{from{transform:scale(.96);opacity:0}to{transform:scale(1);opacity:1}}
 
-/* Board */
+/* Live Attendance Board (Right) */
 .board-panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;min-height:0}
 .board-head{display:flex;align-items:center;gap:14px;margin-bottom:12px}
 .board-head .sub{color:var(--muted);font-size:12px;margin-left:6px}
@@ -114,14 +126,11 @@ button,input{font:inherit}
 
 @media(max-width:1100px){
   .kiosk-content{grid-template-columns:1fr;overflow:auto}
-  .action-panel{min-height:430px}
+  .action-panel{min-height:460px}
   .board-panel{min-height:560px}
   html,body{overflow:auto}
 }
   </style>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 </head>
 <body>
   <!-- One-time tablet pairing -->
@@ -129,10 +138,16 @@ button,input{font:inherit}
     <div class="pair-card">
       <div class="logo">◉</div>
       <h1 id="pairAgency">Attendance Kiosk</h1>
-      <p>Enter the kiosk key from <b>HR / IT → Admin → Settings → Tablet / kiosk access</b>.<br>
-         This tablet will stay paired for 7 days.</p>
-      <input id="pairKey" type="text" placeholder="KIOSK KEY" autocomplete="off" spellcheck="false">
-      <button class="pair-btn" id="btnPair">Pair this tablet</button>
+      <p>Enter your published Apps Script <b>/exec</b> URL and the kiosk key from <b>Admin → Settings</b>.<br>
+         Authorized Kiosk Terminal — stays paired for your active browser session.</p>
+
+      <label class="field-lbl" for="serverUrl">Apps Script Web App URL (/exec)</label>
+      <input id="serverUrl" type="text" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" spellcheck="false">
+
+      <label class="field-lbl" for="kioskKeyInput">Kiosk Key</label>
+      <input id="kioskKeyInput" type="password" placeholder="KIOSK KEY" autocomplete="off" spellcheck="false">
+
+      <button class="pair-btn" id="btnConnect">Connect &amp; Pair Tablet</button>
       <div class="pair-msg" id="pairMsg"></div>
       <div class="pair-note">No employee sign-in is needed on this screen. Employees simply scan their QR code or use face recognition.</div>
     </div>
@@ -145,7 +160,10 @@ button,input{font:inherit}
         <div class="bi">◉</div>
         <div><b id="headAgency">ATTENDANCE MONITORING SYSTEM</b><small id="headOffice">Employee Time In / Out Kiosk</small></div>
       </div>
-      <div class="kiosk-clock"><div id="clockTime">--:--:--</div><div id="clockDate">—</div></div>
+      <div class="kiosk-right">
+        <div class="kiosk-clock"><div id="clockTime">--:--:--</div><div id="clockDate">—</div></div>
+        <button class="unpair-btn" id="btnUnpair" title="Disconnect tablet">Unpair</button>
+      </div>
     </header>
 
     <div class="kiosk-content">
@@ -156,11 +174,15 @@ button,input{font:inherit}
           <button class="method" id="tabManual">⌨ Enter Code</button>
           <button class="method" id="tabFace">☻ Face</button>
         </div>
-        <a id="btnStandaloneScanner" class="standalone-link hidden" target="_blank" rel="noopener">📷 Open full live camera scanner</a>
 
+        <!-- QR Code Scanner Pane -->
         <div class="method-pane active" id="qrPane">
-          <div class="scanner-wrap"><div id="qrReader"></div><div class="scanner-hint">Use “Take photo” or “Choose image” to scan, or “Live scan”</div></div>
-          <div class="action-btns">
+          <div class="scanner-wrap">
+            <video id="qrVideo" playsinline muted></video>
+            <div class="qr-box"></div>
+            <div class="scanner-hint" id="qrHint">Tap “Live scan” or “Take photo” / “Choose image”</div>
+          </div>
+          <div class="action-btns" style="flex-wrap:wrap">
             <button class="big-btn" id="btnQrStart" style="flex:1 1 45%">▶ Live scan</button>
             <button class="big-btn alt" id="btnQrStop" style="flex:1 1 45%">■ Stop</button>
             <label class="big-btn alt label-btn" for="qrFileCapture" style="flex:1 1 45%">📷 Take photo</label>
@@ -170,20 +192,25 @@ button,input{font:inherit}
           <input type="file" id="qrFileGallery" accept="image/*" class="file-input">
         </div>
 
+        <!-- Manual / USB Barcode Scanner Pane -->
         <div class="method-pane manual-pane" id="manualPane">
           <div class="scanner-hint" style="position:static">Scan with a USB/Bluetooth barcode scanner or type the QR code, then press Enter.</div>
-          <input id="manualQr" type="text" placeholder="ATTEND|EMP...|1|SIGNATURE" autocomplete="off" spellcheck="false">
-          <button class="big-btn" id="btnManualQr">◎ Record attendance</button>
+          <input id="manualCode" type="password" placeholder="ATTEND|EMP...|1|SIGNATURE" autocomplete="off" spellcheck="false">
+          <button class="big-btn" id="btnManual">◎ Record attendance</button>
         </div>
 
+        <!-- Face Recognition Pane -->
         <div class="method-pane" id="facePane">
-          <div class="face-wrap"><video id="faceVideo" autoplay playsinline muted></video><div class="face-ring"></div>
-            <div class="face-msg" id="faceMsg">Tap “Start camera” or “Take photo”</div></div>
-          <div class="action-btns">
-            <button class="big-btn" id="btnFaceStart" style="flex:1 1 45%">▶ Start camera</button>
-            <label class="big-btn alt label-btn" for="faceFileCapture" style="flex:1 1 45%">📷 Take photo</label>
-            <button class="big-btn hidden" id="btnFaceCapture" style="flex:1 1 45%">◎ Verify &amp; record</button>
-            <button class="big-btn alt" id="btnFaceStop" style="flex:1 1 45%">■ Stop</button>
+          <div class="face-wrap">
+            <video id="faceVideo" autoplay playsinline muted></video>
+            <div class="face-ring"></div>
+            <div class="face-msg" id="faceMsg">Camera idle</div>
+          </div>
+          <div class="action-btns" style="flex-wrap:wrap">
+            <button class="big-btn" id="btnFaceStart" style="flex:1 1 30%">▶ Start camera</button>
+            <button class="big-btn hidden" id="btnVerifyFace" style="flex:1 1 45%">◎ Verify &amp; record</button>
+            <button class="big-btn alt" id="btnFaceStop" style="flex:1 1 20%">■ Stop</button>
+            <label class="big-btn alt label-btn" for="faceFileCapture" style="flex:1 1 100%">📷 Verify from selfie photo</label>
           </div>
           <input type="file" id="faceFileCapture" accept="image/*" capture="user" class="file-input">
         </div>
@@ -191,6 +218,7 @@ button,input{font:inherit}
         <div id="resultBanner" class="result-banner hidden"></div>
       </section>
 
+      <!-- Live Attendance Board -->
       <section class="board-panel">
         <div class="board-head">
           <h2>Live Attendance Board <span class="sub" id="boardDate"></span></h2>
@@ -222,411 +250,548 @@ button,input{font:inherit}
   </div>
 
 <script>
-const K = {
-  token: '', boot: null, timer: null, bannerTimer: null,
-  scanner: null, faceStream: null, descriptors: [], modelsLoaded: false,
-  faceFailed: false
-};
-const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
-const $ = (s, r) => (r || document).querySelector(s);
-function esc(v) {
-  return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-function call(fn) {
-  const args = Array.prototype.slice.call(arguments, 1);
-  const directArgFns = ['apiKioskAuthenticateV2', 'apiKioskDiagnostics'];
-  let serverArgs = args;
-  if (directArgFns.indexOf(fn) === -1) {
-    const first = args[0], second = args[1];
-    const payload = (first && typeof first === 'object') ? first
-      : ((second && typeof second === 'object') ? second : {});
-    payload.kioskToken = K.token;
-    serverArgs = [payload];
-  }
-  return new Promise((resolve, reject) => {
-    if (!window.google || !google.script || !google.script.run) {
-      reject(new Error('Apps Script client not loaded. Open the published /exec web app URL.'));
-      return;
-    }
-    google.script.run
-      .withSuccessHandler(res => {
-        if (res && res.success === false) reject(new Error((res.code ? '[' + res.code + '] ' : '') + (res.message || 'Request failed')));
-        else resolve(res);
-      })
-      .withFailureHandler(err => reject(new Error(err && err.message ? err.message : 'Server error')))
-      [fn].apply(google.script.run, serverArgs);
-  });
-}
-function slotLabel(s) {
-  return ({ AM_IN: 'AM Time-In', AM_OUT: 'AM Time-Out / Lunch', PM_IN: 'PM Time-In',
-    PM_OUT: 'PM Time-Out', EXTRA: 'Extra Scan' })[s] || s;
-}
-function pairError(msg) { $('#pairMsg').textContent = msg || ''; }
+  const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+  const EXEC_RE = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
 
-/* ---------- Pairing / boot ---------- */
-function showPair() {
-  $('#pairScreen').classList.remove('hidden');
-  $('#kioskApp').classList.add('hidden');
-  $('#pairKey').focus();
-}
-async function init() {
-  try {
-    const diag = await call('apiKioskDiagnostics');
-    if (!diag.requireKey) {
-      applyBoot(await call('apiKioskBootstrap', {}));
-      return;
-    }
-  } catch (e) { /* fall through to key/pairing mode */ }
+  let SERVER = '';
+  let TOKEN = '';
+  let MODE = 'QR';
+  let THRESHOLD = 0.6;
+  let stream = null;
+  let scanning = false;
+  let busy = false;
+  let lastCode = '';
+  let modelsLoaded = false;
+  let descriptors = [];
+  let faceFailed = false;
+  let boardTimer = null;
+  let bannerTimer = null;
+  let clockStarted = false;
 
-  const stored = localStorage.getItem('ats_kiosk_token');
-  if (stored) {
-    K.token = stored;
-    try { applyBoot(await call('apiKioskBootstrap', { kioskToken: K.token })); return; }
-    catch (e) { localStorage.removeItem('ats_kiosk_token'); K.token = ''; }
+  const $ = id => document.getElementById(id);
+  const qrVideo = $('qrVideo');
+  const faceVideo = $('faceVideo');
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  function esc(v) {
+    return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
-  showPair();
-}
-$('#btnPair').addEventListener('click', async () => {
-  const key = $('#pairKey').value.trim().toUpperCase();
-  if (!key) return pairError('Enter the kiosk key first.');
-  $('#btnPair').disabled = true;
-  pairError('Pairing…');
-  try {
-    const r = await call('apiKioskAuthenticateV2', key);
-    if (!r || !r.kioskToken) throw new Error('No pairing token returned by server.');
-    K.token = r.kioskToken;
-    let boot;
+
+  function slotLabel(s) {
+    return ({
+      AM_IN: 'AM Time-In',
+      AM_OUT: 'AM Time-Out / Lunch',
+      PM_IN: 'PM Time-In',
+      PM_OUT: 'PM Time-Out',
+      EXTRA: 'Extra Scan'
+    })[s] || s;
+  }
+
+  function pairError(msg) {
+    $('pairMsg').textContent = msg || '';
+  }
+
+  function showBanner(title, detail, kind) {
+    const box = $('resultBanner');
+    box.className = 'result-banner' + (kind === 'bad' ? ' bad' : kind === 'info' ? ' info' : '');
+    box.innerHTML = '<div class="rb-name">' + esc(title) + '</div>' +
+      (detail ? '<div class="rb-detail">' + esc(detail) + '</div>' : '');
+    clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => box.classList.add('hidden'), 6000);
+  }
+
+  function validateServerUrl(raw) {
+    const clean = String(raw || '').trim().split('?')[0].replace(/\/+$/, '');
+    if (!EXEC_RE.test(clean)) {
+      throw new Error('Invalid URL. Must be an official https://script.google.com/macros/s/.../exec deployment.');
+    }
+    return clean;
+  }
+
+  function serverCall(action, extra) {
+    const validServer = validateServerUrl(SERVER);
+    return new Promise((resolve, reject) => {
+      const cb = '__attend_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
+      const pairs = Object.keys(extra || {}).filter(k => extra[k] !== undefined && extra[k] !== '').map(k =>
+        encodeURIComponent(k) + '=' + encodeURIComponent(extra[k]));
+      const url = validServer + '?action=' + encodeURIComponent(action) +
+        '&callback=' + cb + '&t=' + Date.now() + (pairs.length ? '&' + pairs.join('&') : '');
+      let script;
+      const timer = setTimeout(() => { cleanup(); reject(new Error('Server did not respond. Check the URL and deployment.')); }, 15000);
+      function cleanup() {
+        clearTimeout(timer);
+        try { delete window[cb]; } catch (e) {}
+        if (script && script.parentNode) script.parentNode.removeChild(script);
+      }
+      window[cb] = res => {
+        cleanup();
+        if (res && res.success === false) {
+          const err = new Error((res.code ? '[' + res.code + '] ' : '') + (res.message || 'Request failed'));
+          err.code = res.code;
+          reject(err);
+        } else {
+          resolve(res || {});
+        }
+      };
+      script = document.createElement('script');
+      script.src = url;
+      script.async = true;
+      script.referrerPolicy = 'no-referrer';
+      script.onerror = () => { cleanup(); reject(new Error('Cannot reach the Apps Script server.')); };
+      document.head.appendChild(script);
+    });
+  }
+
+  function showPairScreen() {
+    stopCameras();
+    clearInterval(boardTimer);
+    $('pairScreen').classList.remove('hidden');
+    $('kioskApp').classList.add('hidden');
+  }
+
+  async function connect(savedToken) {
+    SERVER = validateServerUrl($('serverUrl').value);
+    const enteredKey = $('kioskKeyInput').value.trim().toUpperCase();
+    localStorage.setItem('att_scanner_server', SERVER);
+
+    $('btnConnect').disabled = true;
+    pairError('Connecting & pairing tablet…');
     try {
-      boot = await call('apiKioskBootstrap', K.token);
+      const params = savedToken ? { token: savedToken } : { kioskKey: enteredKey };
+      const cfg = await serverCall('scannerConfig', params);
+      TOKEN = cfg.token || savedToken || '';
+      THRESHOLD = cfg.threshold || 0.6;
+      if (!TOKEN) throw new Error('Scanner token missing. Check Kiosk Key.');
+
+      sessionStorage.setItem('att_scanner_token', TOKEN);
+      $('kioskKeyInput').value = '';
+      pairError('');
+
+      $('pairScreen').classList.add('hidden');
+      $('kioskApp').classList.remove('hidden');
+
+      if (cfg.agencyName) {
+        $('headAgency').textContent = cfg.agencyName.toUpperCase();
+        $('pairAgency').textContent = cfg.agencyName + ' Kiosk';
+      }
+      $('headOffice').textContent = (cfg.office || 'Office') + ' — Employee Time In / Out Kiosk';
+      $('tabFace').classList.toggle('hidden', cfg.faceEnabled === false);
+
+      startClock();
+      loadBoard();
+      clearInterval(boardTimer);
+      boardTimer = setInterval(loadBoard, 15000);
+
+      if (cfg.faceEnabled !== false) {
+        serverCall('scannerDescriptors', { token: TOKEN }).then(r => { descriptors = r.descriptors || []; }).catch(() => {});
+      }
+      return cfg;
     } catch (e) {
-      if (!/UNAUTHORIZED|Please sign in/i.test(e.message) || !r.keyToken) throw e;
-      K.token = r.keyToken;
-      boot = await call('apiKioskBootstrap', K.token);
+      sessionStorage.removeItem('att_scanner_token');
+      TOKEN = '';
+      showPairScreen();
+      throw e;
+    } finally {
+      $('btnConnect').disabled = false;
     }
-    localStorage.setItem('ats_kiosk_token', K.token);
-    $('#pairKey').value = '';
-    pairError('');
-    applyBoot(boot);
-  } catch (e) {
-    let extra = '';
-    try {
-      const d = await call('apiKioskDiagnostics');
-      extra = ' [key=' + (d.keyPresent ? 'set(' + d.keyLength + ')' : 'MISSING') +
-        ', db=' + (d.spreadsheetConfigured ? 'ok' : 'MISSING') +
-        ', url=' + (d.webAppUrl ? 'ok' : 'MISSING') + ']';
-    } catch (ignore) {}
-    pairError(e.message + extra);
-  } finally { $('#btnPair').disabled = false; }
-});
-
-function applyBoot(boot) {
-  K.boot = boot;
-  $('#pairScreen').classList.add('hidden');
-  $('#kioskApp').classList.remove('hidden');
-  $('#headAgency').textContent = boot.agencyName || 'ATTENDANCE MONITORING SYSTEM';
-  $('#headOffice').textContent = (boot.office || 'Office') + ' — Employee Time In / Out Kiosk';
-  $('#pairAgency').textContent = (boot.agencyName || 'Attendance') + ' Kiosk';
-  $('#tabFace').classList.toggle('hidden', !boot.faceEnabled);
-  if (boot.scannerPageUrl && boot.webAppUrl) {
-    const sep = boot.scannerPageUrl.indexOf('?') >= 0 ? '&' : '?';
-    const link = $('#btnStandaloneScanner');
-    let href = boot.scannerPageUrl + sep + 'server=' + encodeURIComponent(boot.webAppUrl);
-    if (K.token) href += '&key=' + encodeURIComponent(K.token);
-    link.href = href;
-    link.classList.remove('hidden');
   }
-  startClock();
-  loadBoard();
-  K.timer = setInterval(loadBoard, 15000);
-  if (boot.faceEnabled) loadDescriptors();
-}
 
-function startClock() {
-  const tick = () => {
-    const d = new Date();
-    $('#clockTime').textContent = d.toLocaleTimeString('en-US', { hour12: true });
-    $('#clockDate').textContent = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  };
-  tick(); setInterval(tick, 1000);
-}
+  function unpair() {
+    TOKEN = '';
+    descriptors = [];
+    sessionStorage.removeItem('att_scanner_token');
+    showPairScreen();
+    pairError('Tablet unpaired. Enter Kiosk Key to reconnect.');
+  }
 
-/* ---------- Live board ---------- */
-async function loadBoard() {
-  try {
-    const r = await call('apiKioskBoard', K.token);
-    const b = r.board, c = b.counts;
-    $('#boardDate').textContent = '· ' + b.date;
-    $('#lastUpdate').textContent = 'Updated ' + b.time;
-    $('#cntOnDuty').textContent = c.onDuty;
-    $('#cntLoggedOut').textContent = c.loggedOut;
-    $('#cntOnLeave').textContent = c.onLeave;
-    $('#sumOnDuty').textContent = c.onDuty;
-    $('#sumLoggedOut').textContent = c.loggedOut;
-    $('#sumOnLeave').textContent = c.onLeave;
-    $('#sumNotIn').textContent = c.notIn;
-
-    const person = (p, cls) => '<div class="person ' + cls + '">' +
-      '<span class="ptime">' + esc(p.timeIn || '—') + '</span>' +
-      '<div class="pname">' + esc(p.name) + '</div>' +
-      '<div class="pmeta">' + esc(p.position || p.employeeType || '') + (p.office ? ' · ' + esc(p.office) : '') + '</div>' +
-      (p.leaveCode ? '<span class="tag">' + esc(p.leaveCode) + ' — ' + esc(p.leaveName) +
-        (p.officialBusiness ? ' (Official Business)' : '') + '</span>' : '') +
-      (p.verification === 'UNVERIFIED' ? '<span class="tag warn">UNVERIFIED</span>' : '') +
-      '</div>';
-
-    const fill = (id, list, cls, empty) => {
-      $(id).innerHTML = list.length ? list.map(p => person(p, cls)).join('') : '<div class="empty">' + empty + '</div>';
+  function startClock() {
+    if (clockStarted) return;
+    clockStarted = true;
+    const tick = () => {
+      const d = new Date();
+      $('clockTime').textContent = d.toLocaleTimeString('en-US', { hour12: true });
+      $('clockDate').textContent = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     };
-    fill('#listOnDuty', b.groups.ON_DUTY, '', 'Nobody currently on duty');
-    fill('#listLoggedOut', b.groups.LOGGED_OUT, 'out', 'No completed time records yet');
-    fill('#listOnLeave', b.groups.ON_LEAVE, 'leave', 'No official business or leave today');
-    $('#recentScans').innerHTML = b.recent.length
-      ? b.recent.map(x => '<span><b>' + esc(x.time) + '</b> ' + esc(x.name) + ' — ' + esc(slotLabel(x.logType)) +
-        (x.verification === 'UNVERIFIED' ? ' ⚠' : '') + '</span>').join('')
-      : '—';
-  } catch (e) {
-    if (/UNAUTHORIZED|Please sign in/i.test(e.message)) {
-      clearInterval(K.timer);
-      localStorage.removeItem('ats_kiosk_token');
-      showPair();
-      pairError('Pairing expired. Enter the kiosk key again.');
-    }
-    $('#lastUpdate').textContent = 'Update failed — retrying…';
+    tick();
+    setInterval(tick, 1000);
   }
-}
 
-/* ---------- Scan result banner ---------- */
-function showResult(r, bad) {
-  const box = $('#resultBanner');
-  box.className = 'result-banner' + (bad ? ' bad' : '');
-  box.innerHTML = '<div class="rb-name">' + esc(bad ? '⚠ ' + (r.message || 'Not recorded') : '✓ ' + (r.employee ? r.employee.name : '')) + '</div>' +
-    '<div class="rb-detail">' + esc(bad ? '' : (slotLabel(r.logType) + ' · ' + r.time +
-      (r.needsReview ? ' · Flagged for HR review' : ''))) + '</div>';
-  clearTimeout(K.bannerTimer);
-  K.bannerTimer = setTimeout(() => box.classList.add('hidden'), 6000);
-}
-
-async function record(payload) {
-  try {
-    const r = await call('apiKioskRecord', K.token, Object.assign({ deviceInfo: 'KIOSK_TABLET' }, payload));
-    showResult(r, false);
-    loadBoard();
-  } catch (e) { showResult({ message: e.message }, true); }
-}
-
-/* ---------- Camera & image helpers ---------- */
-function stopCameras() {
-  if (K.scanner) { try { K.scanner.stop().catch(() => {}); } catch (e) {} K.scanner = null; }
-  if (K.faceStream) { K.faceStream.getTracks().forEach(t => t.stop()); K.faceStream = null; }
-}
-
-function loadImageFile(file) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read the photo.')); };
-    img.src = url;
-  });
-}
-
-async function startQr() {
-  stopCameras();
-  if (!window.Html5Qrcode) return showResult({ message: 'QR library unavailable — check internet.' }, true);
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    return showResult({ message: 'Camera API unavailable. Use “Take photo” or open the standalone scanner.' }, true);
-  }
-  try {
-    K.scanner = new Html5Qrcode('qrReader', { verbose: false });
-    await K.scanner.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: 260 },
-      async text => {
-        try { await K.scanner.pause(true); } catch (e) {}
-        await record({ method: 'QR', qrToken: text, verification: K.faceFailed ? 'QR_FALLBACK' : undefined });
-        K.faceFailed = false;
-        try { await K.scanner.resume(); } catch (e) {}
-      },
-      () => {}
-    );
-    $('.scanner-hint').textContent = 'Place your QR code in front of the camera';
-  } catch (e) {
-    const errName = e && e.name ? e.name : '';
-    const errMsg = e && e.message ? e.message : String(e);
-    if (errName === 'NotAllowedError' || /Permission|policy|denied/i.test(errMsg)) {
-      const hasStandalone = !$('#btnStandaloneScanner').classList.contains('hidden');
-      showResult({
-        message: 'Live camera blocked by Google Apps Script iframe (' + (errName || 'NotAllowedError') + '). ' +
-          (hasStandalone ? 'Tap “Open full live camera scanner” above, or use “Take photo”.' : 'Use “Take photo” or configure SCANNER_PAGE_URL in Admin → Settings.')
-      }, true);
-    } else if (errName === 'NotFoundError') {
-      showResult({ message: 'No camera detected on this tablet.' }, true);
-    } else if (errName === 'NotReadableError') {
-      showResult({ message: 'Camera is currently in use by another app.' }, true);
-    } else {
-      showResult({ message: 'Camera error: ' + errMsg }, true);
-    }
-  }
-}
-
-async function scanQrPhoto(file) {
-  if (!file) return;
-  if (!window.jsQR) return showResult({ message: 'QR decoder unavailable — check internet.' }, true);
-  try {
-    const img = await loadImageFile(file);
-    const scale = Math.min(1, 1400 / Math.max(img.width || 1, img.height || 1));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round((img.width || 1) * scale);
-    canvas.height = Math.round((img.height || 1) * scale);
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'attemptBoth' });
-    if (!code || !code.data) {
-      return showResult({ message: 'No QR code found in that photo. Try again with better lighting.' }, true);
-    }
-    await record({ method: 'QR', qrToken: code.data, verification: K.faceFailed ? 'QR_FALLBACK' : undefined });
-    K.faceFailed = false;
-  } catch (e) {
-    showResult({ message: 'Photo scan failed: ' + (e.message || e) }, true);
-  }
-}
-
-/* ---------- Face recognition ---------- */
-async function loadDescriptors() {
-  try { const r = await call('apiKioskFaceDescriptors', K.token); K.descriptors = r.descriptors || []; }
-  catch (e) { console.error(e); }
-}
-async function loadModels() {
-  if (K.modelsLoaded) return;
-  if (!window.faceapi) throw new Error('Face library unavailable — check internet.');
-  $('#faceMsg').textContent = 'Loading face models…';
-  await Promise.all([
-    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-  ]);
-  K.modelsLoaded = true;
-}
-function distance(a, b) {
-  if (!a || !b || a.length !== b.length) return 999;
-  let s = 0; for (let i = 0; i < a.length; i++) s += (a[i] - b[i]) * (a[i] - b[i]);
-  return Math.sqrt(s);
-}
-async function matchAndRecordFace(inputEl) {
-  const det = await faceapi.detectSingleFace(
-    inputEl,
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })
-  ).withFaceLandmarks().withFaceDescriptor();
-  if (!det) throw new Error('No face detected. Adjust lighting and try again.');
-  if (!K.descriptors.length) await loadDescriptors();
-  if (!K.descriptors.length) throw new Error('No employees are enrolled for face recognition.');
-  const desc = Array.from(det.descriptor);
-  let best = null, dist = 999;
-  K.descriptors.forEach(d => { const dd = distance(desc, d.descriptor); if (dd < dist) { dist = dd; best = d; } });
-  $('#faceMsg').textContent = 'Best match: ' + (best ? best.name : 'none') + ' (' + dist.toFixed(3) + ')';
-  if (!best || dist > (K.boot.threshold || 0.6)) {
-    K.faceFailed = true;
-    showResult({ message: 'Face not recognized. Use QR — entry will be flagged for HR.' }, true);
-    switchMethod('QR');
-    return;
-  }
-  await record({ method: 'FACE', employeeId: best.employeeId });
-}
-async function startFace() {
-  stopCameras();
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    $('#faceMsg').textContent = 'Live camera unavailable — tap “Take photo”.';
-    return showResult({ message: 'Live camera unavailable. Tap “Take photo” instead.' }, true);
-  }
-  try {
-    await loadModels();
+  /* ---------- Live Attendance Board ---------- */
+  async function loadBoard() {
+    if (!TOKEN) return;
     try {
-      K.faceStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-    } catch (e) {
-      K.faceStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    }
-    const v = $('#faceVideo'); v.srcObject = K.faceStream; await v.play();
-    $('#faceMsg').textContent = 'Look at the camera, then tap Verify & record.';
-    $('#btnFaceCapture').classList.remove('hidden');
-  } catch (e) {
-    const errName = e && e.name ? e.name : '';
-    const errMsg = e && e.message ? e.message : String(e);
-    if (errName === 'NotAllowedError' || /Permission|policy|denied/i.test(errMsg)) {
-      $('#faceMsg').textContent = 'Live camera blocked by Apps Script iframe — tap “Take photo”.';
-      showResult({ message: 'Live face camera blocked (' + (errName || 'NotAllowedError') + '). Tap “Take photo” instead.' }, true);
-    } else {
-      $('#faceMsg').textContent = 'Camera/model error: ' + errMsg;
-      K.faceFailed = true;
-      showResult({ message: 'Face unavailable (' + errMsg + ') — use “Take photo” or QR.' }, true);
-    }
-  }
-}
-async function captureFace() {
-  try {
-    await matchAndRecordFace($('#faceVideo'));
-  } catch (e) {
-    K.faceFailed = true;
-    showResult({ message: e.message + ' — use QR fallback.' }, true);
-  }
-}
-async function scanFacePhoto(file) {
-  if (!file) return;
-  try {
-    await loadModels();
-    $('#faceMsg').textContent = 'Analyzing photo…';
-    const img = await loadImageFile(file);
-    await matchAndRecordFace(img);
-  } catch (e) {
-    K.faceFailed = true;
-    $('#faceMsg').textContent = e.message || 'Face photo error';
-    showResult({ message: (e.message || e) + ' — use QR fallback.' }, true);
-  }
-}
+      const r = await serverCall('scannerBoard', { token: TOKEN });
+      const b = r.board;
+      if (!b) return;
+      const c = b.counts || { onDuty: 0, loggedOut: 0, onLeave: 0, notIn: 0 };
+      $('boardDate').textContent = b.date ? '· ' + b.date : '';
+      $('lastUpdate').textContent = b.time ? 'Updated ' + b.time : 'Live';
+      $('cntOnDuty').textContent = c.onDuty;
+      $('cntLoggedOut').textContent = c.loggedOut;
+      $('cntOnLeave').textContent = c.onLeave;
+      $('sumOnDuty').textContent = c.onDuty;
+      $('sumLoggedOut').textContent = c.loggedOut;
+      $('sumOnLeave').textContent = c.onLeave;
+      $('sumNotIn').textContent = c.notIn;
 
-function switchMethod(which) {
-  stopCameras();
-  const qr = which === 'QR', face = which === 'FACE', manual = which === 'MANUAL';
-  $('#tabQr').classList.toggle('active', qr);
-  $('#tabManual').classList.toggle('active', manual);
-  $('#tabFace').classList.toggle('active', face);
-  $('#qrPane').classList.toggle('active', qr);
-  $('#manualPane').classList.toggle('active', manual);
-  $('#facePane').classList.toggle('active', face);
-  if (manual) $('#manualQr').focus();
-}
-function submitManualQr() {
-  const token = $('#manualQr').value.trim();
-  if (!token) return showResult({ message: 'Enter a QR code first.' }, true);
-  record({ method: 'QR', qrToken: token });
-  $('#manualQr').value = '';
-  $('#manualQr').focus();
-}
-$('#tabQr').addEventListener('click', () => switchMethod('QR'));
-$('#tabManual').addEventListener('click', () => switchMethod('MANUAL'));
-$('#tabFace').addEventListener('click', () => switchMethod('FACE'));
-$('#btnManualQr').addEventListener('click', submitManualQr);
-$('#manualQr').addEventListener('keydown', e => { if (e.key === 'Enter') submitManualQr(); });
-$('#btnQrStart').addEventListener('click', startQr);
-$('#btnQrStop').addEventListener('click', stopCameras);
-['qrFileCapture', 'qrFileGallery'].forEach(id => {
-  $('#' + id).addEventListener('change', e => {
-    scanQrPhoto(e.target.files && e.target.files[0]);
+      const person = (p, cls) => '<div class="person ' + cls + '">' +
+        '<span class="ptime">' + esc(p.timeIn || '—') + '</span>' +
+        '<div class="pname">' + esc(p.name) + '</div>' +
+        '<div class="pmeta">' + esc(p.position || p.employeeType || '') + (p.office ? ' · ' + esc(p.office) : '') + '</div>' +
+        (p.leaveCode ? '<span class="tag">' + esc(p.leaveCode) + ' — ' + esc(p.leaveName) +
+          (p.officialBusiness ? ' (Official Business)' : '') + '</span>' : '') +
+        (p.verification === 'UNVERIFIED' ? '<span class="tag warn">UNVERIFIED</span>' : '') +
+        '</div>';
+
+      const fill = (id, list, cls, empty) => {
+        $(id).innerHTML = list && list.length ? list.map(p => person(p, cls)).join('') : '<div class="empty">' + empty + '</div>';
+      };
+      const groups = b.groups || {};
+      fill('#listOnDuty', groups.ON_DUTY, '', 'Nobody currently on duty');
+      fill('#listLoggedOut', groups.LOGGED_OUT, 'out', 'No completed time records yet');
+      fill('#listOnLeave', groups.ON_LEAVE, 'leave', 'No official business or leave today');
+
+      const recent = b.recent || [];
+      $('recentScans').innerHTML = recent.length
+        ? recent.map(x => '<span><b>' + esc(x.time) + '</b> ' + esc(x.name) + ' — ' + esc(slotLabel(x.logType)) +
+          (x.verification === 'UNVERIFIED' ? ' ⚠' : '') + '</span>').join('')
+        : '—';
+    } catch (e) {
+      if (/UNAUTHORIZED|Please sign in/i.test(e.message)) {
+        unpair();
+        pairError('Session expired. Enter the kiosk key again.');
+        return;
+      }
+      $('lastUpdate').textContent = 'Board sync retrying…';
+    }
+  }
+
+  /* ---------- Camera & Scanner Controls ---------- */
+  function stopCameras() {
+    scanning = false;
+    $('btnVerifyFace').classList.add('hidden');
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+    qrVideo.srcObject = null;
+    faceVideo.srcObject = null;
+  }
+
+  async function ensureCameraPermission() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Camera API unavailable. Open this page over HTTPS.');
+    }
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      s.getTracks().forEach(t => t.stop());
+    } catch (e) {
+      if (e && (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError' || e.name === 'SecurityError')) {
+        throw new Error('Camera permission denied. Allow camera access in browser site settings, then reload.');
+      }
+      throw e;
+    }
+  }
+
+  async function startQrCamera() {
+    if (!TOKEN) throw new Error('Pair the tablet first.');
+    stopCameras();
+    if (!window.jsQR) throw new Error('QR decoder library not loaded.');
+    await ensureCameraPermission();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    } catch (e) {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+    qrVideo.srcObject = stream;
+    await qrVideo.play();
+    scanning = true;
+    lastCode = '';
+    busy = false;
+    $('qrHint').textContent = 'Place your QR code inside the frame';
+    scanLoop();
+  }
+
+  function decodeFrame() {
+    if (!qrVideo.videoWidth || !qrVideo.videoHeight) return '';
+    canvas.width = qrVideo.videoWidth;
+    canvas.height = qrVideo.videoHeight;
+    ctx.drawImage(qrVideo, 0, 0, canvas.width, canvas.height);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+    return code && code.data ? code.data : '';
+  }
+
+  function scanLoop() {
+    if (!scanning) return;
+    if (!busy) {
+      const text = decodeFrame();
+      if (text && text !== lastCode) handleQrCode(text);
+    }
+    requestAnimationFrame(scanLoop);
+  }
+
+  async function handleQrCode(text) {
+    if (!TOKEN) return showBanner('⚠ Not paired', 'Pair the tablet first.', 'bad');
+    busy = true;
+    lastCode = text;
+    showBanner('Recording scan…', 'Verifying QR code with server…', 'info');
+    try {
+      const r = await serverCall('scannerRecord', {
+        token: TOKEN,
+        method: 'QR',
+        qr: text,
+        verification: faceFailed ? 'QR_FALLBACK' : '',
+        device: navigator.userAgent.slice(0, 120)
+      });
+      faceFailed = false;
+      const empName = r.employee && r.employee.name ? r.employee.name : (r.message || 'Attendance Recorded');
+      const detail = r.logType ? (slotLabel(r.logType) + (r.time ? ' · ' + r.time : '') + (r.needsReview ? ' · Flagged for HR review' : '')) : (r.message || '');
+      showBanner('✓ ' + empName, detail, 'ok');
+      loadBoard();
+    } catch (e) {
+      showBanner('⚠ Not Recorded', e.message || 'Recording failed.', 'bad');
+    }
+    setTimeout(() => { busy = false; lastCode = ''; }, 4000);
+  }
+
+  /* ---------- Face Recognition ---------- */
+  async function loadFaceModels() {
+    if (modelsLoaded) return;
+    if (!window.faceapi) throw new Error('face-api.js failed to load.');
+    $('faceMsg').textContent = 'Loading face recognition models…';
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+    ]);
+    modelsLoaded = true;
+  }
+
+  function distance(a, b) {
+    if (!a || !b || a.length !== b.length) return 999;
+    let s = 0;
+    for (let i = 0; i < a.length; i++) s += (a[i] - b[i]) * (a[i] - b[i]);
+    return Math.sqrt(s);
+  }
+
+  async function startFaceCamera() {
+    if (!TOKEN) throw new Error('Pair the tablet first.');
+    stopCameras();
+    await loadFaceModels();
+    await ensureCameraPermission();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'user' } }, audio: false });
+    } catch (e) {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+    faceVideo.srcObject = stream;
+    await faceVideo.play();
+    $('btnVerifyFace').classList.remove('hidden');
+    $('faceMsg').textContent = 'Position your face in the circle, then tap Verify & record.';
+  }
+
+  async function verifyFace() {
+    if (!TOKEN) return showBanner('⚠ Not paired', 'Pair the tablet first.', 'bad');
+    if (busy) return;
+    busy = true;
+    $('faceMsg').textContent = 'Scanning face…';
+    try {
+      const det = await faceapi.detectSingleFace(
+        faceVideo,
+        new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })
+      ).withFaceLandmarks().withFaceDescriptor();
+      if (!det) throw new Error('No face detected. Adjust lighting and try again.');
+
+      if (!descriptors.length) {
+        const res = await serverCall('scannerDescriptors', { token: TOKEN });
+        descriptors = res.descriptors || [];
+      }
+      if (!descriptors.length) throw new Error('No employees are enrolled for face recognition.');
+
+      const desc = Array.from(det.descriptor);
+      let best = null, dist = 999;
+      descriptors.forEach(d => {
+        const dd = distance(desc, d.descriptor);
+        if (dd < dist) { dist = dd; best = d; }
+      });
+
+      if (!best || dist > THRESHOLD) {
+        faceFailed = true;
+        switchMethod('QR');
+        throw new Error('Face not recognized. Switched to QR — entry will be flagged for HR review.');
+      }
+
+      const r = await serverCall('scannerRecord', {
+        token: TOKEN,
+        method: 'FACE',
+        employeeId: best.employeeId,
+        device: navigator.userAgent.slice(0, 120)
+      });
+      const empName = (r.employee && r.employee.name) || best.name || 'Face Verified';
+      const detail = r.logType ? (slotLabel(r.logType) + (r.time ? ' · ' + r.time : '')) : (r.message || 'Attendance recorded.');
+      $('faceMsg').textContent = 'Verified: ' + empName;
+      showBanner('✓ ' + empName, detail, 'ok');
+      loadBoard();
+    } catch (e) {
+      $('faceMsg').textContent = e.message || 'Face verification failed.';
+      showBanner('⚠ Face Verification Failed', e.message || 'Use QR fallback.', 'bad');
+    } finally {
+      busy = false;
+    }
+  }
+
+  /* ---------- Photo / Gallery Upload Scanning ---------- */
+  function loadImage(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read image.')); };
+      img.src = url;
+    });
+  }
+
+  async function scanQrPhoto(file) {
+    if (!file) return;
+    if (!window.jsQR) return showBanner('⚠ Error', 'QR decoder not loaded.', 'bad');
+    try {
+      const img = await loadImage(file);
+      const scale = Math.min(1, 1600 / Math.max(img.width || 1, img.height || 1));
+      canvas.width = Math.round((img.width || 1) * scale);
+      canvas.height = Math.round((img.height || 1) * scale);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'attemptBoth' });
+      if (!code || !code.data) return showBanner('⚠ No QR Found', 'No QR code found in that photo. Try better lighting.', 'bad');
+      handleQrCode(code.data);
+    } catch (e) {
+      showBanner('⚠ Photo Scan Failed', e.message || 'Could not process image.', 'bad');
+    }
+  }
+
+  async function scanFacePhoto(file) {
+    if (!file) return;
+    try {
+      await loadFaceModels();
+      showBanner('Analyzing photo…', 'Detecting face in uploaded photo…', 'info');
+      const img = await loadImage(file);
+      const det = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+        .withFaceLandmarks().withFaceDescriptor();
+      if (!det) throw new Error('No face detected in photo.');
+      if (!descriptors.length) {
+        const res = await serverCall('scannerDescriptors', { token: TOKEN });
+        descriptors = res.descriptors || [];
+      }
+      if (!descriptors.length) throw new Error('No employees are enrolled for face recognition.');
+      const desc = Array.from(det.descriptor);
+      let best = null, dist = 999;
+      descriptors.forEach(d => {
+        const dd = distance(desc, d.descriptor);
+        if (dd < dist) { dist = dd; best = d; }
+      });
+      if (!best || dist > THRESHOLD) {
+        faceFailed = true;
+        switchMethod('QR');
+        throw new Error('Face not recognized. Switched to QR fallback.');
+      }
+      const r = await serverCall('scannerRecord', {
+        token: TOKEN,
+        method: 'FACE',
+        employeeId: best.employeeId,
+        device: navigator.userAgent.slice(0, 120)
+      });
+      const empName = (r.employee && r.employee.name) || best.name || 'Face Verified';
+      const detail = r.logType ? (slotLabel(r.logType) + (r.time ? ' · ' + r.time : '')) : (r.message || 'Attendance recorded.');
+      showBanner('✓ ' + empName, detail, 'ok');
+      loadBoard();
+    } catch (e) {
+      showBanner('⚠ Face Photo Failed', e.message || 'Could not verify face.', 'bad');
+    }
+  }
+
+  /* ---------- Method Switching & Event Wiring ---------- */
+  function switchMethod(which) {
+    stopCameras();
+    MODE = which;
+    const qr = which === 'QR', manual = which === 'MANUAL', face = which === 'FACE';
+    $('tabQr').classList.toggle('active', qr);
+    $('tabManual').classList.toggle('active', manual);
+    $('tabFace').classList.toggle('active', face);
+    $('qrPane').classList.toggle('active', qr);
+    $('manualPane').classList.toggle('active', manual);
+    $('facePane').classList.toggle('active', face);
+    if (manual) {
+      $('manualCode').focus();
+    } else if (qr) {
+      $('qrHint').textContent = 'Tap “Live scan” or “Take photo” / “Choose image”';
+    } else if (face) {
+      $('faceMsg').textContent = 'Tap “Start camera” or “Verify from selfie photo”';
+    }
+  }
+
+  $('tabQr').addEventListener('click', () => switchMethod('QR'));
+  $('tabManual').addEventListener('click', () => switchMethod('MANUAL'));
+  $('tabFace').addEventListener('click', () => switchMethod('FACE'));
+
+  $('btnConnect').addEventListener('click', () => connect().catch(e => pairError(e.message)));
+  $('kioskKeyInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnConnect').click(); });
+  $('btnUnpair').addEventListener('click', unpair);
+
+  $('btnQrStart').addEventListener('click', () => startQrCamera().catch(e => {
+    $('qrHint').textContent = e.message;
+    showBanner('⚠ Camera Error', e.message, 'bad');
+  }));
+  $('btnQrStop').addEventListener('click', () => {
+    stopCameras();
+    $('qrHint').textContent = 'Camera stopped.';
+  });
+
+  ['qrFileCapture', 'qrFileGallery'].forEach(id => {
+    $(id).addEventListener('change', e => {
+      scanQrPhoto(e.target.files && e.target.files[0]);
+      e.target.value = '';
+    });
+  });
+
+  $('btnManual').addEventListener('click', () => {
+    const text = $('manualCode').value.trim();
+    if (!text) return showBanner('⚠ Empty Input', 'Scan or enter a QR token first.', 'bad');
+    $('manualCode').value = '';
+    handleQrCode(text);
+    $('manualCode').focus();
+  });
+  $('manualCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnManual').click(); });
+
+  $('btnFaceStart').addEventListener('click', () => startFaceCamera().catch(e => {
+    $('faceMsg').textContent = e.message;
+    showBanner('⚠ Camera Error', e.message, 'bad');
+  }));
+  $('btnVerifyFace').addEventListener('click', verifyFace);
+  $('btnFaceStop').addEventListener('click', () => {
+    stopCameras();
+    $('faceMsg').textContent = 'Camera stopped.';
+  });
+  $('faceFileCapture').addEventListener('change', e => {
+    scanFacePhoto(e.target.files && e.target.files[0]);
     e.target.value = '';
   });
-});
-$('#btnFaceStart').addEventListener('click', startFace);
-$('#faceFileCapture').addEventListener('change', e => {
-  scanFacePhoto(e.target.files && e.target.files[0]);
-  e.target.value = '';
-});
-$('#btnFaceStop').addEventListener('click', () => {
-  stopCameras(); $('#btnFaceCapture').classList.add('hidden'); $('#faceMsg').textContent = 'Tap “Start camera” or “Take photo”';
-});
-$('#btnFaceCapture').addEventListener('click', captureFace);
 
-init();
+  // Strip any query string from the address bar so URLs/keys are never exposed in browser history
+  const qs = new URLSearchParams(location.search);
+  const initialServer = qs.get('server') || localStorage.getItem('att_scanner_server') || '';
+  if (location.search && window.history && window.history.replaceState) {
+    window.history.replaceState({}, document.title, location.pathname);
+  }
+  const savedToken = sessionStorage.getItem('att_scanner_token') || '';
+  if (initialServer) {
+    $('serverUrl').value = initialServer;
+    if (savedToken) {
+      connect(savedToken).catch(e => pairError(e.message));
+    }
+  }
 </script>
 </body>
 </html>
