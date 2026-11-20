@@ -54,7 +54,9 @@ button,input{font:inherit}
 
 /* Action Panel (Left) */
 .action-panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;min-height:0}
+.action-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .action-panel h2,.board-head h2{margin:0;font-size:17px;letter-spacing:.3px}
+.queue-badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:rgba(18,163,165,.2);color:var(--teal);border:1px solid rgba(18,163,165,.4)}
 .method-switch{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0 14px}
 .method{padding:14px 6px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font-size:14px;font-weight:700;cursor:pointer;transition:.15s}
 .method:hover{border-color:var(--teal);color:#fff}
@@ -65,8 +67,9 @@ button,input{font:inherit}
 .scanner-wrap{background:#061a2d;border-radius:14px;overflow:hidden;min-height:230px;flex:1;display:grid;place-items:center;position:relative}
 .scanner-wrap video,.face-wrap video{width:100%;height:100%;object-fit:cover;display:block}
 .face-wrap video,.scanner-wrap video.mirror{transform:scaleX(-1)}
-.qr-box{position:absolute;inset:18% 18%;border:3px solid rgba(18,163,165,.85);border-radius:18px;pointer-events:none;box-shadow:0 0 0 9999px rgba(3,15,28,.35)}
-.scanner-hint{position:absolute;bottom:10px;left:10px;right:10px;text-align:center;color:#8fb0cd;font-size:12px;pointer-events:none;background:rgba(3,15,28,.65);padding:6px 10px;border-radius:8px}
+.qr-box{position:absolute;inset:17.5% 17.5%;border:3px solid rgba(18,163,165,.85);border-radius:18px;pointer-events:none;box-shadow:0 0 0 9999px rgba(3,15,28,.35);transition:border-color .15s,transform .15s}
+.qr-box.flash{border-color:#22c55e;transform:scale(1.03)}
+.scanner-hint{position:absolute;bottom:10px;left:10px;right:10px;text-align:center;color:#8fb0cd;font-size:12px;pointer-events:none;background:rgba(3,15,28,.75);padding:6px 10px;border-radius:8px}
 
 .face-wrap{background:#061a2d;border-radius:14px;overflow:hidden;flex:1;min-height:230px;position:relative;display:grid;place-items:center}
 .face-ring{position:absolute;width:190px;height:190px;border:3px solid var(--teal);border-radius:50%;box-shadow:0 0 0 9999px rgba(3,15,28,.45);pointer-events:none}
@@ -84,7 +87,7 @@ button,input{font:inherit}
 .label-btn{display:flex;align-items:center;justify-content:center;text-align:center;cursor:pointer}
 .file-input{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 
-.result-banner{margin-top:12px;padding:16px;border-radius:12px;background:linear-gradient(135deg,#0f7a55,#12a3a5);border:1px solid rgba(255,255,255,.2);animation:pop .25s ease-out}
+.result-banner{margin-top:12px;padding:16px;border-radius:12px;background:linear-gradient(135deg,#0f7a55,#12a3a5);border:1px solid rgba(255,255,255,.2);animation:pop .2s ease-out}
 .result-banner.bad{background:linear-gradient(135deg,#9e3b2f,#d9534f)}
 .result-banner.info{background:linear-gradient(135deg,#1d5fa8,#123a63)}
 .result-banner .rb-name{font-size:20px;font-weight:800}
@@ -168,7 +171,10 @@ button,input{font:inherit}
 
     <div class="kiosk-content">
       <section class="action-panel">
-        <h2>◎ Time In / Time Out</h2>
+        <div class="action-head">
+          <h2>◎ Time In / Time Out</h2>
+          <span class="queue-badge hidden" id="queueBadge">Queue: 0</span>
+        </div>
         <div class="method-switch">
           <button class="method active" id="tabQr">▦ Scan QR</button>
           <button class="method" id="tabManual">⌨ Enter Code</button>
@@ -179,7 +185,7 @@ button,input{font:inherit}
         <div class="method-pane active" id="qrPane">
           <div class="scanner-wrap">
             <video id="qrVideo" playsinline muted></video>
-            <div class="qr-box"></div>
+            <div class="qr-box" id="qrBox"></div>
             <div class="scanner-hint" id="qrHint">Tap “Live scan” or “Take photo” / “Choose image”</div>
           </div>
           <div class="action-btns" style="flex-wrap:wrap">
@@ -259,14 +265,24 @@ button,input{font:inherit}
   let THRESHOLD = 0.6;
   let stream = null;
   let scanning = false;
-  let busy = false;
-  let lastCode = '';
+  let faceBusy = false;
   let modelsLoaded = false;
   let descriptors = [];
   let faceFailed = false;
   let boardTimer = null;
   let bannerTimer = null;
   let clockStarted = false;
+
+  // Background QR Scan Queue & Per-Employee Deduplication
+  const scanQueue = [];
+  const recentTokens = new Map(); // qrToken -> timestamp (ms)
+  const SAME_QR_COOLDOWN_MS = 15000; // Prevent duplicate scans of same badge for 15s
+  let queueWorkerRunning = false;
+
+  // Hardware-accelerated native QR detector when available (Chrome/Edge/Android)
+  const nativeQrDetector = ('BarcodeDetector' in window)
+    ? new window.BarcodeDetector({ formats: ['qr_code'] })
+    : null;
 
   const $ = id => document.getElementById(id);
   const qrVideo = $('qrVideo');
@@ -299,7 +315,25 @@ button,input{font:inherit}
     box.innerHTML = '<div class="rb-name">' + esc(title) + '</div>' +
       (detail ? '<div class="rb-detail">' + esc(detail) + '</div>' : '');
     clearTimeout(bannerTimer);
-    bannerTimer = setTimeout(() => box.classList.add('hidden'), 6000);
+    bannerTimer = setTimeout(() => box.classList.add('hidden'), 5500);
+  }
+
+  function playScanBeep(ok = true) {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctxAudio = new AudioCtx();
+      const osc = ctxAudio.createOscillator();
+      const gain = ctxAudio.createGain();
+      osc.type = ok ? 'sine' : 'sawtooth';
+      osc.frequency.value = ok ? 880 : 240;
+      gain.gain.setValueAtTime(0.15, ctxAudio.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctxAudio.currentTime + (ok ? 0.12 : 0.25));
+      osc.connect(gain);
+      gain.connect(ctxAudio.destination);
+      osc.start();
+      osc.stop(ctxAudio.currentTime + (ok ? 0.12 : 0.25));
+    } catch (e) {}
   }
 
   function validateServerUrl(raw) {
@@ -401,6 +435,9 @@ button,input{font:inherit}
   function unpair() {
     TOKEN = '';
     descriptors = [];
+    scanQueue.length = 0;
+    recentTokens.clear();
+    updateQueueUI();
     sessionStorage.removeItem('att_scanner_token');
     showPairScreen();
     pairError('Tablet unpaired. Enter Kiosk Key to reconnect.');
@@ -423,18 +460,21 @@ button,input{font:inherit}
     if (!TOKEN) return;
     try {
       const r = await serverCall('scannerBoard', { token: TOKEN });
-      const b = r.board;
-      if (!b) return;
+      const b = r.board || (r.groups ? r : null);
+      if (!b) {
+        $('lastUpdate').textContent = 'Board unavailable (deploy updated ScannerApi.gs)';
+        return;
+      }
       const c = b.counts || { onDuty: 0, loggedOut: 0, onLeave: 0, notIn: 0 };
       $('boardDate').textContent = b.date ? '· ' + b.date : '';
       $('lastUpdate').textContent = b.time ? 'Updated ' + b.time : 'Live';
-      $('cntOnDuty').textContent = c.onDuty;
-      $('cntLoggedOut').textContent = c.loggedOut;
-      $('cntOnLeave').textContent = c.onLeave;
-      $('sumOnDuty').textContent = c.onDuty;
-      $('sumLoggedOut').textContent = c.loggedOut;
-      $('sumOnLeave').textContent = c.onLeave;
-      $('sumNotIn').textContent = c.notIn;
+      $('cntOnDuty').textContent = c.onDuty || 0;
+      $('cntLoggedOut').textContent = c.loggedOut || 0;
+      $('cntOnLeave').textContent = c.onLeave || 0;
+      $('sumOnDuty').textContent = c.onDuty || 0;
+      $('sumLoggedOut').textContent = c.loggedOut || 0;
+      $('sumOnLeave').textContent = c.onLeave || 0;
+      $('sumNotIn').textContent = c.notIn || 0;
 
       const person = (p, cls) => '<div class="person ' + cls + '">' +
         '<span class="ptime">' + esc(p.timeIn || '—') + '</span>' +
@@ -464,11 +504,11 @@ button,input{font:inherit}
         pairError('Session expired. Enter the kiosk key again.');
         return;
       }
-      $('lastUpdate').textContent = 'Board sync retrying…';
+      $('lastUpdate').textContent = 'Board error: ' + e.message;
     }
   }
 
-  /* ---------- Camera & Scanner Controls ---------- */
+  /* ---------- Camera & Fast QR Decoding ---------- */
   function stopCameras() {
     scanning = false;
     $('btnVerifyFace').classList.add('hidden');
@@ -498,63 +538,164 @@ button,input{font:inherit}
   async function startQrCamera() {
     if (!TOKEN) throw new Error('Pair the tablet first.');
     stopCameras();
-    if (!window.jsQR) throw new Error('QR decoder library not loaded.');
+    if (!nativeQrDetector && !window.jsQR) throw new Error('QR decoder library not loaded.');
     await ensureCameraPermission();
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          focusMode: { ideal: 'continuous' }
+        },
+        audio: false
+      });
     } catch (e) {
       stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
     }
     qrVideo.srcObject = stream;
     await qrVideo.play();
     scanning = true;
-    lastCode = '';
-    busy = false;
-    $('qrHint').textContent = 'Place your QR code inside the frame';
+    updateQueueUI();
     scanLoop();
   }
 
-  function decodeFrame() {
-    if (!qrVideo.videoWidth || !qrVideo.videoHeight) return '';
-    canvas.width = qrVideo.videoWidth;
-    canvas.height = qrVideo.videoHeight;
-    ctx.drawImage(qrVideo, 0, 0, canvas.width, canvas.height);
-    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+  async function decodeFrameFast() {
+    const vw = qrVideo.videoWidth;
+    const vh = qrVideo.videoHeight;
+    if (!vw || !vh) return '';
+
+    // 1. Fast path: hardware-accelerated native BarcodeDetector
+    if (nativeQrDetector) {
+      try {
+        const codes = await nativeQrDetector.detect(qrVideo);
+        if (codes && codes.length && codes[0].rawValue) {
+          return codes[0].rawValue;
+        }
+        return '';
+      } catch (e) { /* fall through to jsQR */ }
+    }
+
+    // 2. Fallback path: crop center 65% target box and downscale to max 360px
+    const cropSize = Math.round(Math.min(vw, vh) * 0.65);
+    const sx = Math.round((vw - cropSize) / 2);
+    const sy = Math.round((vh - cropSize) / 2);
+    const targetSize = Math.min(360, cropSize);
+
+    canvas.width = targetSize;
+    canvas.height = targetSize;
+    ctx.drawImage(qrVideo, sx, sy, cropSize, cropSize, 0, 0, targetSize, targetSize);
+
+    const img = ctx.getImageData(0, 0, targetSize, targetSize);
+    const code = window.jsQR(img.data, targetSize, targetSize, { inversionAttempts: 'dontInvert' });
     return code && code.data ? code.data : '';
   }
 
-  function scanLoop() {
-    if (!scanning) return;
-    if (!busy) {
-      const text = decodeFrame();
-      if (text && text !== lastCode) handleQrCode(text);
+  /* ---------- Non-Blocking Background QR Queue ---------- */
+  function updateQueueUI() {
+    const pending = scanQueue.length + (queueWorkerRunning ? 1 : 0);
+    const badge = $('queueBadge');
+    if (pending > 0) {
+      badge.textContent = 'Syncing: ' + pending;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
     }
-    requestAnimationFrame(scanLoop);
+    if (scanning) {
+      $('qrHint').textContent = pending > 0
+        ? 'Ready for next scan · Syncing ' + pending + ' in background…'
+        : 'Hold QR code steady inside the frame';
+    }
   }
 
-  async function handleQrCode(text) {
-    if (!TOKEN) return showBanner('⚠ Not paired', 'Pair the tablet first.', 'bad');
-    busy = true;
-    lastCode = text;
-    showBanner('Recording scan…', 'Verifying QR code with server…', 'info');
-    try {
-      const r = await serverCall('scannerRecord', {
-        token: TOKEN,
-        method: 'QR',
-        qr: text,
-        verification: faceFailed ? 'QR_FALLBACK' : '',
-        device: navigator.userAgent.slice(0, 120)
-      });
-      faceFailed = false;
-      const empName = r.employee && r.employee.name ? r.employee.name : (r.message || 'Attendance Recorded');
-      const detail = r.logType ? (slotLabel(r.logType) + (r.time ? ' · ' + r.time : '') + (r.needsReview ? ' · Flagged for HR review' : '')) : (r.message || '');
-      showBanner('✓ ' + empName, detail, 'ok');
-      loadBoard();
-    } catch (e) {
-      showBanner('⚠ Not Recorded', e.message || 'Recording failed.', 'bad');
+  async function scanLoop() {
+    if (!scanning) return;
+    const text = await decodeFrameFast();
+    if (text) {
+      enqueueQrCode(text);
     }
-    setTimeout(() => { busy = false; lastCode = ''; }, 4000);
+    setTimeout(() => {
+      if (scanning) requestAnimationFrame(scanLoop);
+    }, 80);
+  }
+
+  function enqueueQrCode(text) {
+    if (!TOKEN) {
+      showBanner('⚠ Not paired', 'Pair the tablet first.', 'bad');
+      return;
+    }
+
+    const now = Date.now();
+    for (const [k, ts] of recentTokens.entries()) {
+      if (now - ts > SAME_QR_COOLDOWN_MS) recentTokens.delete(k);
+    }
+
+    // Only block duplicate scans of the exact same QR code for 15 seconds;
+    // any other employee can scan immediately without waiting.
+    if (recentTokens.has(text)) return;
+    recentTokens.set(text, now);
+
+    // Visual reticle flash + audio beep
+    const box = $('qrBox');
+    if (box) {
+      box.classList.add('flash');
+      setTimeout(() => box.classList.remove('flash'), 220);
+    }
+    playScanBeep(true);
+
+    const localTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    scanQueue.push({
+      qr: text,
+      verification: faceFailed ? 'QR_FALLBACK' : '',
+      scannedAt: new Date().toISOString(),
+      localTime: localTime,
+      retries: 0
+    });
+    faceFailed = false;
+
+    showBanner('✓ QR Captured (' + localTime + ')', 'Queued for sync — next employee may scan now.', 'info');
+    updateQueueUI();
+    processScanQueue();
+  }
+
+  async function processScanQueue() {
+    if (queueWorkerRunning || !scanQueue.length) return;
+    queueWorkerRunning = true;
+    updateQueueUI();
+
+    while (scanQueue.length > 0) {
+      const item = scanQueue.shift();
+      updateQueueUI();
+      try {
+        const r = await serverCall('scannerRecord', {
+          token: TOKEN,
+          method: 'QR',
+          qr: item.qr,
+          verification: item.verification,
+          scannedAt: item.scannedAt,
+          device: navigator.userAgent.slice(0, 120)
+        });
+        const empName = (r.employee && r.employee.name) || r.message || 'Attendance Recorded';
+        const detail = r.logType
+          ? (slotLabel(r.logType) + (r.time ? ' · ' + r.time : '') + (r.needsReview ? ' · Flagged for HR review' : ''))
+          : (r.message || '');
+        showBanner('✓ ' + empName, detail, 'ok');
+      } catch (e) {
+        if (item.retries < 1 && /did not respond|Cannot reach/i.test(e.message)) {
+          item.retries++;
+          scanQueue.unshift(item);
+          await new Promise(res => setTimeout(res, 1000));
+        } else {
+          recentTokens.delete(item.qr);
+          playScanBeep(false);
+          showBanner('⚠ Scan Rejected', e.message || 'Recording failed.', 'bad');
+        }
+      }
+    }
+
+    queueWorkerRunning = false;
+    updateQueueUI();
+    loadBoard();
   }
 
   /* ---------- Face Recognition ---------- */
@@ -595,8 +736,8 @@ button,input{font:inherit}
 
   async function verifyFace() {
     if (!TOKEN) return showBanner('⚠ Not paired', 'Pair the tablet first.', 'bad');
-    if (busy) return;
-    busy = true;
+    if (faceBusy) return;
+    faceBusy = true;
     $('faceMsg').textContent = 'Scanning face…';
     try {
       const det = await faceapi.detectSingleFace(
@@ -624,6 +765,7 @@ button,input{font:inherit}
         throw new Error('Face not recognized. Switched to QR — entry will be flagged for HR review.');
       }
 
+      playScanBeep(true);
       const r = await serverCall('scannerRecord', {
         token: TOKEN,
         method: 'FACE',
@@ -636,10 +778,11 @@ button,input{font:inherit}
       showBanner('✓ ' + empName, detail, 'ok');
       loadBoard();
     } catch (e) {
+      playScanBeep(false);
       $('faceMsg').textContent = e.message || 'Face verification failed.';
       showBanner('⚠ Face Verification Failed', e.message || 'Use QR fallback.', 'bad');
     } finally {
-      busy = false;
+      faceBusy = false;
     }
   }
 
@@ -666,7 +809,7 @@ button,input{font:inherit}
       const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const code = jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'attemptBoth' });
       if (!code || !code.data) return showBanner('⚠ No QR Found', 'No QR code found in that photo. Try better lighting.', 'bad');
-      handleQrCode(code.data);
+      enqueueQrCode(code.data);
     } catch (e) {
       showBanner('⚠ Photo Scan Failed', e.message || 'Could not process image.', 'bad');
     }
@@ -697,6 +840,7 @@ button,input{font:inherit}
         switchMethod('QR');
         throw new Error('Face not recognized. Switched to QR fallback.');
       }
+      playScanBeep(true);
       const r = await serverCall('scannerRecord', {
         token: TOKEN,
         method: 'FACE',
@@ -708,6 +852,7 @@ button,input{font:inherit}
       showBanner('✓ ' + empName, detail, 'ok');
       loadBoard();
     } catch (e) {
+      playScanBeep(false);
       showBanner('⚠ Face Photo Failed', e.message || 'Could not verify face.', 'bad');
     }
   }
@@ -760,7 +905,7 @@ button,input{font:inherit}
     const text = $('manualCode').value.trim();
     if (!text) return showBanner('⚠ Empty Input', 'Scan or enter a QR token first.', 'bad');
     $('manualCode').value = '';
-    handleQrCode(text);
+    enqueueQrCode(text);
     $('manualCode').focus();
   });
   $('manualCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnManual').click(); });
