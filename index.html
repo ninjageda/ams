@@ -1,458 +1,632 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
 <head>
+  <base target="_top">
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://script.google.com https://script.googleusercontent.com; connect-src 'self' https://justadudewhohacks.github.io https://cdn.jsdelivr.net; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none';">
-  <title>Attendance Live Camera Scanner</title>
+  <title>Attendance Kiosk</title>
+  <style>
+:root{
+  --navy:#0b2743; --navy2:#123a63; --blue:#2471c4; --teal:#12a3a5;
+  --green:#22a868; --amber:#e0a020; --red:#d9534f;
+  --bg:#071c30; --panel:#0f2c4a; --panel2:#133656; --line:rgba(255,255,255,.10);
+  --ink:#eaf3fb; --muted:#8fb0cd;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;overflow:hidden}
+body{font-family:'Segoe UI',Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+.hidden{display:none!important}
+button,input{font:inherit}
+
+/* Pairing */
+.pair-screen{min-height:100vh;display:grid;place-items:center;padding:24px;
+  background:radial-gradient(circle at 25% 20%,#174a7a 0,#0b2743 55%,#061729 100%)}
+.pair-card{width:100%;max-width:520px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:32px;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.5)}
+.pair-card .logo{font-size:46px;color:var(--teal)}
+.pair-card h1{font-size:24px;margin:12px 0 6px}
+.pair-card p{color:var(--muted);font-size:14px;line-height:1.5}
+.pair-card input{width:100%;padding:16px;margin:18px 0 12px;border-radius:10px;border:1px solid var(--line);background:#0a2138;color:#fff;font-size:20px;text-align:center;letter-spacing:3px;text-transform:uppercase;outline:none}
+.pair-card input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(18,163,165,.2)}
+.pair-btn{width:100%;padding:15px;border:0;border-radius:10px;background:linear-gradient(135deg,#2471c4,#12a3a5);color:#fff;font-size:17px;font-weight:700;cursor:pointer}
+.pair-btn:disabled{opacity:.6;cursor:wait}
+.pair-note{margin-top:18px;font-size:12px;color:var(--muted)}
+.pair-msg{margin-top:12px;font-size:13px;color:#ffb3ae;min-height:18px}
+
+/* Layout */
+#kioskApp{height:100vh;display:flex;flex-direction:column}
+.kiosk-head{height:78px;flex:0 0 78px;display:flex;align-items:center;padding:0 26px;background:linear-gradient(90deg,#0e2f52,#123a63);border-bottom:1px solid var(--line)}
+.kiosk-brand{display:flex;align-items:center;gap:12px}
+.kiosk-brand .bi{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#2471c4,#12a3a5);display:grid;place-items:center;font-size:22px}
+.kiosk-brand b{font-size:19px;letter-spacing:.5px;display:block}
+.kiosk-brand small{color:var(--muted);font-size:12px}
+.kiosk-clock{margin-left:auto;text-align:right}
+.kiosk-clock #clockTime{font-size:28px;font-weight:700;letter-spacing:1px;font-variant-numeric:tabular-nums}
+.kiosk-clock #clockDate{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.kiosk-content{flex:1;min-height:0;display:grid;grid-template-columns:minmax(340px,34%) 1fr;gap:14px;padding:14px}
+
+/* Action panel */
+.action-panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;min-height:0}
+.action-panel h2,.board-head h2{margin:0;font-size:17px;letter-spacing:.3px}
+.method-switch{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0 14px}
+.method{font-size:14px;padding:14px 6px}
+.manual-pane{justify-content:center;gap:12px}
+.manual-pane input{width:100%;padding:18px;border-radius:12px;border:1px solid var(--line);background:#061a2d;color:#fff;font-size:18px;letter-spacing:1px;outline:none}
+.manual-pane input:focus{border-color:var(--teal)}
+.manual-pane .big-btn{width:100%;flex:0 0 auto}
+.label-btn{display:flex;align-items:center;justify-content:center;text-align:center;cursor:pointer}
+.file-input{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+.standalone-link{display:block;text-align:center;margin:-4px 0 14px;padding:12px;border:1px solid var(--teal);border-radius:12px;background:rgba(18,163,165,.12);color:#5eead4;font-weight:700;text-decoration:none;font-size:14px}
+.standalone-link:hover{background:rgba(18,163,165,.22)}
+.method{padding:16px 10px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font-size:16px;font-weight:700;cursor:pointer;transition:.15s}
+.method:hover{border-color:var(--teal);color:#fff}
+.method.active{background:linear-gradient(135deg,#1d5fa8,#12a3a5);color:#fff;border-color:transparent;box-shadow:0 8px 20px rgba(18,163,165,.24)}
+.method-pane{display:none;flex:1;min-height:0;flex-direction:column}
+.method-pane.active{display:flex}
+.scanner-wrap{background:#061a2d;border-radius:14px;overflow:hidden;min-height:220px;flex:1;display:grid;place-items:center;position:relative}
+.scanner-wrap #qrReader{width:100%}
+.scanner-wrap video{width:100%!important}
+.scanner-hint{position:absolute;bottom:10px;left:10px;right:10px;text-align:center;color:#8fb0cd;font-size:12px;pointer-events:none}
+.face-wrap{background:#061a2d;border-radius:14px;overflow:hidden;flex:1;min-height:220px;position:relative;display:grid;place-items:center}
+.face-wrap video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.face-ring{position:absolute;width:180px;height:180px;border:3px solid var(--teal);border-radius:50%;box-shadow:0 0 0 9999px rgba(3,15,28,.45);pointer-events:none}
+.face-msg{position:absolute;bottom:12px;left:12px;right:12px;background:rgba(3,15,28,.75);padding:9px;border-radius:8px;text-align:center;font-size:13px;z-index:2}
+.action-btns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.big-btn{flex:1;padding:13px 10px;border:0;border-radius:11px;background:linear-gradient(135deg,#2471c4,#12a3a5);color:#fff;font-size:15px;font-weight:700;cursor:pointer}
+.big-btn.alt{background:var(--panel2);border:1px solid var(--line);color:var(--ink)}
+.big-btn:disabled{opacity:.5;cursor:not-allowed}
+.result-banner{margin-top:12px;padding:14px;border-radius:12px;background:linear-gradient(135deg,#0f7a55,#12a3a5);border:1px solid rgba(255,255,255,.2);animation:pop .25s ease-out}
+.result-banner.bad{background:linear-gradient(135deg,#9e3b2f,#d9534f)}
+.result-banner .rb-name{font-size:20px;font-weight:800}
+.result-banner .rb-detail{font-size:13px;opacity:.9;margin-top:3px}
+@keyframes pop{from{transform:scale(.96);opacity:0}to{transform:scale(1);opacity:1}}
+
+/* Board */
+.board-panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;min-height:0}
+.board-head{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+.board-head .sub{color:var(--muted);font-size:12px;margin-left:6px}
+.board-head .updated{margin-left:auto;color:var(--muted);font-size:12px}
+.board-cols{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.board-col{background:var(--panel2);border-radius:12px;display:flex;flex-direction:column;min-height:0;overflow:hidden;border:1px solid var(--line)}
+.col-head{padding:11px 12px;font-size:12px;font-weight:800;letter-spacing:1px;display:flex;align-items:center;gap:8px;border-bottom:2px solid}
+.col-head .count{margin-left:auto;background:rgba(255,255,255,.14);border-radius:20px;padding:2px 9px;font-size:12px}
+.col-head.on{border-color:var(--green);color:#7ee0ae}
+.col-head.out{border-color:var(--blue);color:#8cc4ff}
+.col-head.leave{border-color:var(--amber);color:#f4cd78}
+.list{flex:1;overflow:auto;padding:8px}
+.person{background:rgba(255,255,255,.045);border-radius:9px;padding:9px 10px;margin-bottom:7px;border-left:3px solid var(--green)}
+.person.out{border-left-color:var(--blue)}
+.person.leave{border-left-color:var(--amber)}
+.person .pname{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.person .pmeta{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.person .ptime{float:right;font-size:12px;font-weight:700;color:var(--teal);margin-left:6px}
+.person .tag{display:inline-block;font-size:9px;background:rgba(224,160,32,.18);color:#f4cd78;border-radius:10px;padding:1px 7px;margin-top:4px}
+.person .tag.warn{background:rgba(217,83,79,.18);color:#ff9d97}
+.empty{color:var(--muted);font-size:12px;text-align:center;padding:26px 8px}
+.ticker{margin-top:10px;background:#0a2138;border-radius:10px;padding:9px 12px;display:flex;align-items:center;gap:12px;overflow:hidden;flex:0 0 auto}
+.ticker-label{font-size:10px;font-weight:800;color:var(--teal);letter-spacing:1.5px;flex:0 0 auto}
+.ticker-items{display:flex;gap:18px;overflow:hidden;white-space:nowrap;font-size:12px}
+.ticker-items span b{color:#fff}
+.ticker-items span{color:var(--muted)}
+.summary-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px;flex:0 0 auto}
+.sum{background:#0a2138;border-radius:9px;padding:8px 10px;text-align:center}
+.sum .n{font-size:19px;font-weight:800}
+.sum .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+.sum.green .n{color:#7ee0ae}.sum.blue .n{color:#8cc4ff}.sum.amber .n{color:#f4cd78}.sum.muted .n{color:#b9cadb}
+
+@media(max-width:1100px){
+  .kiosk-content{grid-template-columns:1fr;overflow:auto}
+  .action-panel{min-height:430px}
+  .board-panel{min-height:560px}
+  html,body{overflow:auto}
+}
+  </style>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-  <style>
-    :root{
-      --bg:#041424;--card:#0b2239;--line:#1c3d59;--teal:#2dd4bf;--green:#22c55e;
-      --red:#f87171;--amber:#fbbf24;--text:#e6f1f7;--muted:#8aa6bd;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px}
-    .wrap{max-width:900px;margin:0 auto}
-    h1{font-size:22px;margin:0 0 4px;letter-spacing:.4px}
-    .sub{color:var(--muted);font-size:14px;margin-bottom:16px;line-height:1.5}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 12px 30px rgba(0,0,0,.25)}
-    .hidden{display:none!important}
-    label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
-    input[type=text],input[type=password]{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:#061a2d;color:#fff;font-size:15px;outline:none;margin-bottom:8px}
-    input:focus{border-color:var(--teal)}
-    .tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
-    .tab{padding:12px;border-radius:12px;border:1px solid var(--line);background:#061a2d;color:var(--muted);font-weight:700;cursor:pointer;font-size:15px}
-    .tab.active{background:linear-gradient(135deg,#1d5fa8,#12a3a5);color:#fff;border-color:transparent}
-    .btn{appearance:none;border:0;border-radius:12px;padding:14px 18px;font-size:15px;font-weight:700;cursor:pointer;background:var(--teal);color:#04202b}
-    .btn.alt{background:#173b59;color:var(--text)}
-    .btn.danger{background:#7f1d1d;color:#fecaca}
-    .btn:disabled{opacity:.5;cursor:not-allowed}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px}
-    .video-wrap{position:relative;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:4/3}
-    video{width:100%;height:100%;object-fit:cover;display:block}
-    video.mirror{transform:scaleX(-1)}
-    .frame{position:absolute;inset:18% 18%;border:3px solid rgba(45,212,191,.85);border-radius:18px;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,.25)}
-    .frame.circle{inset:auto;width:210px;height:210px;top:50%;left:50%;transform:translate(-50%,-50%);border-radius:50%}
-    #result{margin-top:12px;padding:14px;border-radius:12px;background:#061a2d;border:1px solid var(--line);min-height:52px;line-height:1.45;font-weight:600}
-    #result.ok{border-color:var(--green);color:#bbf7d0}
-    #result.bad{border-color:var(--red);color:#fecaca}
-    #result.info{border-color:var(--amber);color:#fde68a}
-    #status{font-size:13px;color:var(--muted);margin-top:8px}
-    .file-input{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
-    .file-label{display:inline-flex;align-items:center;justify-content:center;padding:14px 18px;border-radius:12px;background:#173b59;color:var(--text);font-weight:700;cursor:pointer;font-size:15px}
-    @media (max-width:600px){ body{padding:10px} .card{padding:12px} .btn,.file-label{flex:1 1 45%;text-align:center} }
-  </style>
 </head>
 <body>
-<div class="wrap">
-  <h1 id="pageHeader">Attendance Live Camera Scanner</h1>
-  <div class="sub">Authorized Kiosk Terminal — requires valid Apps Script endpoint and Kiosk Key.</div>
-
-  <div class="card" id="connectCard">
-    <label for="serverUrl">Apps Script web app URL (/exec)</label>
-    <input id="serverUrl" type="text" spellcheck="false" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec">
-    <div id="keyWrap">
-      <label for="kioskKeyInput">Kiosk Key</label>
-      <input id="kioskKeyInput" type="password" spellcheck="false" autocomplete="off" placeholder="Enter Kiosk Key">
-    </div>
-    <div class="row">
-      <button class="btn" id="btnConnect">Connect &amp; Pair</button>
-      <button class="btn danger hidden" id="btnUnpair">Unpair Tablet</button>
-    </div>
-    <div id="status">Enter your Apps Script /exec URL and Kiosk Key, then tap Connect &amp; Pair.</div>
-  </div>
-
-  <div class="card">
-    <div class="tabs">
-      <button class="tab active" id="tabQr">▦ Scan QR Code</button>
-      <button class="tab" id="tabFace">☻ Face Recognition</button>
-    </div>
-
-    <div class="row" style="margin-bottom:12px">
-      <button class="btn" id="btnStart">▶ Start live camera</button>
-      <button class="btn hidden" id="btnVerifyFace">◎ Verify &amp; record face</button>
-      <button class="btn alt" id="btnStop">■ Stop</button>
-      <label class="file-label" for="scanPhoto">📷 Take photo</label>
-      <input class="file-input" id="scanPhoto" type="file" accept="image/*" capture="environment">
-    </div>
-
-    <div class="video-wrap">
-      <video id="video" playsinline muted></video>
-      <div class="frame" id="guideFrame"></div>
-    </div>
-    <div id="result">Waiting for pairing…</div>
-  </div>
-
-  <div class="card">
-    <label for="manualCode">Manual / USB barcode-scanner entry</label>
-    <div class="row" style="margin-top:0">
-      <input id="manualCode" type="password" placeholder="Scan or enter QR token" spellcheck="false" autocomplete="off" style="margin:0;flex:1">
-      <button class="btn" id="btnManual">Record</button>
+  <!-- One-time tablet pairing -->
+  <div id="pairScreen" class="pair-screen">
+    <div class="pair-card">
+      <div class="logo">◉</div>
+      <h1 id="pairAgency">Attendance Kiosk</h1>
+      <p>Enter the kiosk key from <b>HR / IT → Admin → Settings → Tablet / kiosk access</b>.<br>
+         This tablet will stay paired for 7 days.</p>
+      <input id="pairKey" type="text" placeholder="KIOSK KEY" autocomplete="off" spellcheck="false">
+      <button class="pair-btn" id="btnPair">Pair this tablet</button>
+      <div class="pair-msg" id="pairMsg"></div>
+      <div class="pair-note">No employee sign-in is needed on this screen. Employees simply scan their QR code or use face recognition.</div>
     </div>
   </div>
-</div>
+
+  <!-- Kiosk homepage -->
+  <div id="kioskApp" class="hidden">
+    <header class="kiosk-head">
+      <div class="kiosk-brand">
+        <div class="bi">◉</div>
+        <div><b id="headAgency">ATTENDANCE MONITORING SYSTEM</b><small id="headOffice">Employee Time In / Out Kiosk</small></div>
+      </div>
+      <div class="kiosk-clock"><div id="clockTime">--:--:--</div><div id="clockDate">—</div></div>
+    </header>
+
+    <div class="kiosk-content">
+      <section class="action-panel">
+        <h2>◎ Time In / Time Out</h2>
+        <div class="method-switch">
+          <button class="method active" id="tabQr">▦ Scan QR</button>
+          <button class="method" id="tabManual">⌨ Enter Code</button>
+          <button class="method" id="tabFace">☻ Face</button>
+        </div>
+        <a id="btnStandaloneScanner" class="standalone-link hidden" target="_blank" rel="noopener">📷 Open full live camera scanner</a>
+
+        <div class="method-pane active" id="qrPane">
+          <div class="scanner-wrap"><div id="qrReader"></div><div class="scanner-hint">Use “Take photo” or “Choose image” to scan, or “Live scan”</div></div>
+          <div class="action-btns">
+            <button class="big-btn" id="btnQrStart" style="flex:1 1 45%">▶ Live scan</button>
+            <button class="big-btn alt" id="btnQrStop" style="flex:1 1 45%">■ Stop</button>
+            <label class="big-btn alt label-btn" for="qrFileCapture" style="flex:1 1 45%">📷 Take photo</label>
+            <label class="big-btn alt label-btn" for="qrFileGallery" style="flex:1 1 45%">🖼 Choose image</label>
+          </div>
+          <input type="file" id="qrFileCapture" accept="image/*" capture="environment" class="file-input">
+          <input type="file" id="qrFileGallery" accept="image/*" class="file-input">
+        </div>
+
+        <div class="method-pane manual-pane" id="manualPane">
+          <div class="scanner-hint" style="position:static">Scan with a USB/Bluetooth barcode scanner or type the QR code, then press Enter.</div>
+          <input id="manualQr" type="text" placeholder="ATTEND|EMP...|1|SIGNATURE" autocomplete="off" spellcheck="false">
+          <button class="big-btn" id="btnManualQr">◎ Record attendance</button>
+        </div>
+
+        <div class="method-pane" id="facePane">
+          <div class="face-wrap"><video id="faceVideo" autoplay playsinline muted></video><div class="face-ring"></div>
+            <div class="face-msg" id="faceMsg">Tap “Start camera” or “Take photo”</div></div>
+          <div class="action-btns">
+            <button class="big-btn" id="btnFaceStart" style="flex:1 1 45%">▶ Start camera</button>
+            <label class="big-btn alt label-btn" for="faceFileCapture" style="flex:1 1 45%">📷 Take photo</label>
+            <button class="big-btn hidden" id="btnFaceCapture" style="flex:1 1 45%">◎ Verify &amp; record</button>
+            <button class="big-btn alt" id="btnFaceStop" style="flex:1 1 45%">■ Stop</button>
+          </div>
+          <input type="file" id="faceFileCapture" accept="image/*" capture="user" class="file-input">
+        </div>
+
+        <div id="resultBanner" class="result-banner hidden"></div>
+      </section>
+
+      <section class="board-panel">
+        <div class="board-head">
+          <h2>Live Attendance Board <span class="sub" id="boardDate"></span></h2>
+          <span class="updated" id="lastUpdate">Waiting for data…</span>
+        </div>
+        <div class="board-cols">
+          <div class="board-col">
+            <div class="col-head on">ON DUTY <span class="count" id="cntOnDuty">0</span></div>
+            <div class="list" id="listOnDuty"><div class="empty">No data yet</div></div>
+          </div>
+          <div class="board-col">
+            <div class="col-head out">LOGGED OUT <span class="count" id="cntLoggedOut">0</span></div>
+            <div class="list" id="listLoggedOut"><div class="empty">No data yet</div></div>
+          </div>
+          <div class="board-col">
+            <div class="col-head leave">OFFICIAL BUSINESS / ON LEAVE <span class="count" id="cntOnLeave">0</span></div>
+            <div class="list" id="listOnLeave"><div class="empty">No data yet</div></div>
+          </div>
+        </div>
+        <div class="ticker"><div class="ticker-label">RECENT SCANS</div><div class="ticker-items" id="recentScans">—</div></div>
+        <div class="summary-strip">
+          <div class="sum green"><div class="n" id="sumOnDuty">0</div><div class="l">On Duty</div></div>
+          <div class="sum blue"><div class="n" id="sumLoggedOut">0</div><div class="l">Logged Out</div></div>
+          <div class="sum amber"><div class="n" id="sumOnLeave">0</div><div class="l">OB / On Leave</div></div>
+          <div class="sum muted"><div class="n" id="sumNotIn">0</div><div class="l">Not Yet In</div></div>
+        </div>
+      </section>
+    </div>
+  </div>
 
 <script>
-  const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
-  const EXEC_RE = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
-
-  let SERVER = '';
-  let TOKEN = '';
-  let MODE = 'QR';
-  let THRESHOLD = 0.6;
-  let stream = null;
-  let scanning = false;
-  let busy = false;
-  let lastCode = '';
-  let modelsLoaded = false;
-  let descriptors = [];
-  let faceFailed = false;
-
-  const $ = id => document.getElementById(id);
-  const video = $('video');
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-
-  function setStatus(msg) { $('status').textContent = msg; }
-  function show(msg, kind) {
-    const el = $('result');
-    el.textContent = msg;
-    el.className = kind || '';
+const K = {
+  token: '', boot: null, timer: null, bannerTimer: null,
+  scanner: null, faceStream: null, descriptors: [], modelsLoaded: false,
+  faceFailed: false
+};
+const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+const $ = (s, r) => (r || document).querySelector(s);
+function esc(v) {
+  return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function call(fn) {
+  const args = Array.prototype.slice.call(arguments, 1);
+  const directArgFns = ['apiKioskAuthenticateV2', 'apiKioskDiagnostics'];
+  let serverArgs = args;
+  if (directArgFns.indexOf(fn) === -1) {
+    const first = args[0], second = args[1];
+    const payload = (first && typeof first === 'object') ? first
+      : ((second && typeof second === 'object') ? second : {});
+    payload.kioskToken = K.token;
+    serverArgs = [payload];
   }
-
-  function validateServerUrl(raw) {
-    const clean = String(raw || '').trim().split('?')[0].replace(/\/+$/, '');
-    if (!EXEC_RE.test(clean)) {
-      throw new Error('Invalid URL. Must be an official https://script.google.com/macros/s/.../exec deployment.');
-    }
-    return clean;
-  }
-
-  function serverCall(action, extra) {
-    const validServer = validateServerUrl(SERVER);
-    return new Promise((resolve, reject) => {
-      const cb = '__attend_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
-      const pairs = Object.keys(extra || {}).filter(k => extra[k] !== undefined && extra[k] !== '').map(k =>
-        encodeURIComponent(k) + '=' + encodeURIComponent(extra[k]));
-      const url = validServer + '?action=' + encodeURIComponent(action) +
-        '&callback=' + cb + '&t=' + Date.now() + (pairs.length ? '&' + pairs.join('&') : '');
-      let script;
-      const timer = setTimeout(() => { cleanup(); reject(new Error('Server did not respond. Check the URL and deployment.')); }, 15000);
-      function cleanup() {
-        clearTimeout(timer);
-        try { delete window[cb]; } catch (e) {}
-        if (script && script.parentNode) script.parentNode.removeChild(script);
-      }
-      window[cb] = res => {
-        cleanup();
-        if (res && res.success === false) {
-          const err = new Error((res.code ? '[' + res.code + '] ' : '') + (res.message || 'Request failed'));
-          err.code = res.code;
-          reject(err);
-        } else {
-          resolve(res || {});
-        }
-      };
-      script = document.createElement('script');
-      script.src = url;
-      script.async = true;
-      script.referrerPolicy = 'no-referrer';
-      script.onerror = () => { cleanup(); reject(new Error('Cannot reach the Apps Script server.')); };
-      document.head.appendChild(script);
-    });
-  }
-
-  async function connect(savedToken) {
-    SERVER = validateServerUrl($('serverUrl').value);
-    const enteredKey = $('kioskKeyInput').value.trim().toUpperCase();
-    localStorage.setItem('att_scanner_server', SERVER);
-
-    setStatus('Connecting to Apps Script…');
-    try {
-      const params = savedToken ? { token: savedToken } : { kioskKey: enteredKey };
-      const cfg = await serverCall('scannerConfig', params);
-      TOKEN = cfg.token || savedToken || '';
-      THRESHOLD = cfg.threshold || 0.6;
-      if (!TOKEN) throw new Error('Scanner token missing. Check Kiosk Key.');
-
-      sessionStorage.setItem('att_scanner_token', TOKEN);
-      $('kioskKeyInput').value = '';
-      $('keyWrap').classList.add('hidden');
-      $('btnUnpair').classList.remove('hidden');
-
-      if (cfg.agencyName) $('pageHeader').textContent = cfg.agencyName + ' — Scanner';
-      $('tabFace').classList.toggle('hidden', cfg.faceEnabled === false);
-      setStatus('Paired & connected.');
-      show('Connected. Tap "Start live camera".', 'info');
-
-      if (cfg.faceEnabled !== false) {
-        serverCall('scannerDescriptors', { token: TOKEN }).then(r => { descriptors = r.descriptors || []; }).catch(() => {});
-      }
-      return cfg;
-    } catch (e) {
-      sessionStorage.removeItem('att_scanner_token');
-      TOKEN = '';
-      $('keyWrap').classList.remove('hidden');
-      $('btnUnpair').classList.add('hidden');
-      throw e;
-    }
-  }
-
-  function unpair() {
-    stopCamera();
-    TOKEN = '';
-    descriptors = [];
-    sessionStorage.removeItem('att_scanner_token');
-    $('keyWrap').classList.remove('hidden');
-    $('btnUnpair').classList.add('hidden');
-    setStatus('Unpaired. Enter Kiosk Key to reconnect.');
-    show('Tablet unpaired.', 'info');
-  }
-
-  function stopCamera() {
-    scanning = false;
-    $('btnVerifyFace').classList.add('hidden');
-    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-    video.srcObject = null;
-  }
-
-  async function loadFaceModels() {
-    if (modelsLoaded) return;
-    if (!window.faceapi) throw new Error('face-api.js failed to load.');
-    show('Loading face recognition models…', 'info');
-    await Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-    ]);
-    modelsLoaded = true;
-  }
-
-  async function startCamera() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error('Camera API unavailable. Open over HTTPS.');
-    }
-    if (!TOKEN) await connect();
-    stopCamera();
-
-    const wantFace = MODE === 'FACE';
-    if (wantFace) await loadFaceModels();
-
-    const constraints = wantFace
-      ? { video: { facingMode: { ideal: 'user' } }, audio: false }
-      : { video: { facingMode: { ideal: 'environment' } }, audio: false };
-
-    try {
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (e1) {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    }
-
-    video.classList.toggle('mirror', wantFace);
-    $('guideFrame').classList.toggle('circle', wantFace);
-    video.srcObject = stream;
-    await video.play();
-
-    if (wantFace) {
-      $('btnVerifyFace').classList.remove('hidden');
-      setStatus('Camera running — position your face in the circle.');
-      show('Look at the camera, then tap "Verify & record face".', 'info');
-    } else {
-      if (!window.jsQR) throw new Error('QR decoder not loaded.');
-      scanning = true;
-      lastCode = '';
-      busy = false;
-      setStatus('Live QR scanner active.');
-      show('Hold your QR code inside the frame.', 'info');
-      scanLoop();
-    }
-  }
-
-  function decodeFrame() {
-    if (!video.videoWidth || !video.videoHeight) return '';
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
-    return code && code.data ? code.data : '';
-  }
-
-  function scanLoop() {
-    if (!scanning) return;
-    if (!busy) {
-      const text = decodeFrame();
-      if (text && text !== lastCode) handleQrCode(text);
-    }
-    requestAnimationFrame(scanLoop);
-  }
-
-  async function handleQrCode(text) {
-    if (!TOKEN) return show('Pair the tablet first.', 'bad');
-    busy = true;
-    lastCode = text;
-    show('Recording scan…', 'info');
-    try {
-      const r = await serverCall('scannerRecord', {
-        token: TOKEN,
-        method: 'QR',
-        qr: text,
-        verification: faceFailed ? 'QR_FALLBACK' : '',
-        device: navigator.userAgent.slice(0, 120)
-      });
-      faceFailed = false;
-      show('✓ ' + (r.message || 'Attendance recorded.'), 'ok');
-    } catch (e) {
-      show('⚠ ' + (e.message || 'Recording failed.'), 'bad');
-    }
-    setTimeout(() => { busy = false; lastCode = ''; }, 4000);
-  }
-
-  function distance(a, b) {
-    if (!a || !b || a.length !== b.length) return 999;
-    let s = 0; for (let i = 0; i < a.length; i++) s += (a[i] - b[i]) * (a[i] - b[i]);
-    return Math.sqrt(s);
-  }
-
-  async function verifyFace() {
-    if (!TOKEN) return show('Pair the tablet first.', 'bad');
-    if (busy) return;
-    busy = true;
-    show('Scanning face…', 'info');
-    try {
-      const det = await faceapi.detectSingleFace(
-        video,
-        new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })
-      ).withFaceLandmarks().withFaceDescriptor();
-      if (!det) throw new Error('No face detected. Adjust lighting and try again.');
-      if (!descriptors.length) {
-        const res = await serverCall('scannerDescriptors', { token: TOKEN });
-        descriptors = res.descriptors || [];
-      }
-      if (!descriptors.length) throw new Error('No employees are enrolled for face recognition.');
-
-      const desc = Array.from(det.descriptor);
-      let best = null, dist = 999;
-      descriptors.forEach(d => {
-        const dd = distance(desc, d.descriptor);
-        if (dd < dist) { dist = dd; best = d; }
-      });
-
-      if (!best || dist > THRESHOLD) {
-        faceFailed = true;
-        switchTab('QR');
-        throw new Error('Face not recognized. Switched to QR — entry will be flagged for HR review.');
-      }
-
-      const r = await serverCall('scannerRecord', {
-        token: TOKEN,
-        method: 'FACE',
-        employeeId: best.employeeId,
-        device: navigator.userAgent.slice(0, 120)
-      });
-      show('✓ ' + (r.message || 'Face verified & recorded.'), 'ok');
-    } catch (e) {
-      show('⚠ ' + (e.message || 'Face verification failed.'), 'bad');
-    } finally {
-      busy = false;
-    }
-  }
-
-  function switchTab(mode) {
-    stopCamera();
-    MODE = mode;
-    $('tabQr').classList.toggle('active', mode === 'QR');
-    $('tabFace').classList.toggle('active', mode === 'FACE');
-    $('scanPhoto').setAttribute('capture', mode === 'FACE' ? 'user' : 'environment');
-    show('Ready (' + (mode === 'FACE' ? 'Face Recognition' : 'QR Code') + ').', 'info');
-  }
-
-  function loadImage(file) {
-    return new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(file);
-      const img = new Image();
-      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read image.')); };
-      img.src = url;
-    });
-  }
-
-  async function scanPhoto(file) {
-    if (!file) return;
-    if (!TOKEN) {
-      try { await connect(); } catch (e) { return show(e.message, 'bad'); }
-    }
-    if (MODE === 'FACE') {
-      try {
-        await loadFaceModels();
-        show('Analyzing face photo…', 'info');
-        const img = await loadImage(file);
-        const det = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
-          .withFaceLandmarks().withFaceDescriptor();
-        if (!det) throw new Error('No face detected in photo.');
-        if (!descriptors.length) {
-          const res = await serverCall('scannerDescriptors', { token: TOKEN });
-          descriptors = res.descriptors || [];
-        }
-        const desc = Array.from(det.descriptor);
-        let best = null, dist = 999;
-        descriptors.forEach(d => { const dd = distance(desc, d.descriptor); if (dd < dist) { dist = dd; best = d; } });
-        if (!best || dist > THRESHOLD) {
-          faceFailed = true;
-          switchTab('QR');
-          throw new Error('Face not recognized. Switched to QR fallback.');
-        }
-        const r = await serverCall('scannerRecord', { token: TOKEN, method: 'FACE', employeeId: best.employeeId, device: navigator.userAgent.slice(0, 120) });
-        show('✓ ' + (r.message || 'Face verified.'), 'ok');
-      } catch (e) { show('⚠ ' + (e.message || e), 'bad'); }
+  return new Promise((resolve, reject) => {
+    if (!window.google || !google.script || !google.script.run) {
+      reject(new Error('Apps Script client not loaded. Open the published /exec web app URL.'));
       return;
     }
-
-    try {
-      const img = await loadImage(file);
-      const scale = Math.min(1, 1600 / Math.max(img.width || 1, img.height || 1));
-      canvas.width = Math.round((img.width || 1) * scale);
-      canvas.height = Math.round((img.height || 1) * scale);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'attemptBoth' });
-      if (!code || !code.data) return show('No QR code found in photo.', 'bad');
-      handleQrCode(code.data);
-    } catch (e) { show(e.message || 'Photo scan failed.', 'bad'); }
-  }
-
-  $('tabQr').addEventListener('click', () => switchTab('QR'));
-  $('tabFace').addEventListener('click', () => switchTab('FACE'));
-  $('btnConnect').addEventListener('click', () => connect().catch(e => { setStatus(e.message); show(e.message, 'bad'); }));
-  $('btnUnpair').addEventListener('click', unpair);
-  $('btnStart').addEventListener('click', () => startCamera().catch(e => { setStatus(e.message); show(e.message, 'bad'); }));
-  $('btnVerifyFace').addEventListener('click', verifyFace);
-  $('btnStop').addEventListener('click', () => { stopCamera(); setStatus('Camera stopped.'); show('Camera stopped.', 'info'); });
-  $('btnManual').addEventListener('click', () => {
-    const text = $('manualCode').value.trim();
-    if (!text) return show('Enter a QR code first.', 'bad');
-    $('manualCode').value = '';
-    handleQrCode(text);
+    google.script.run
+      .withSuccessHandler(res => {
+        if (res && res.success === false) reject(new Error((res.code ? '[' + res.code + '] ' : '') + (res.message || 'Request failed')));
+        else resolve(res);
+      })
+      .withFailureHandler(err => reject(new Error(err && err.message ? err.message : 'Server error')))
+      [fn].apply(google.script.run, serverArgs);
   });
-  $('manualCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnManual').click(); });
-  $('scanPhoto').addEventListener('change', e => { scanPhoto(e.target.files && e.target.files[0]); e.target.value = ''; });
+}
+function slotLabel(s) {
+  return ({ AM_IN: 'AM Time-In', AM_OUT: 'AM Time-Out / Lunch', PM_IN: 'PM Time-In',
+    PM_OUT: 'PM Time-Out', EXTRA: 'Extra Scan' })[s] || s;
+}
+function pairError(msg) { $('#pairMsg').textContent = msg || ''; }
 
-  // Strip any query string from the address bar so URLs/keys are never exposed in browser history
-  const qs = new URLSearchParams(location.search);
-  const initialServer = qs.get('server') || localStorage.getItem('att_scanner_server') || '';
-  if (location.search && window.history && window.history.replaceState) {
-    window.history.replaceState({}, document.title, location.pathname);
+/* ---------- Pairing / boot ---------- */
+function showPair() {
+  $('#pairScreen').classList.remove('hidden');
+  $('#kioskApp').classList.add('hidden');
+  $('#pairKey').focus();
+}
+async function init() {
+  try {
+    const diag = await call('apiKioskDiagnostics');
+    if (!diag.requireKey) {
+      applyBoot(await call('apiKioskBootstrap', {}));
+      return;
+    }
+  } catch (e) { /* fall through to key/pairing mode */ }
+
+  const stored = localStorage.getItem('ats_kiosk_token');
+  if (stored) {
+    K.token = stored;
+    try { applyBoot(await call('apiKioskBootstrap', { kioskToken: K.token })); return; }
+    catch (e) { localStorage.removeItem('ats_kiosk_token'); K.token = ''; }
   }
-  const savedToken = sessionStorage.getItem('att_scanner_token') || '';
-  if (initialServer) {
-    $('serverUrl').value = initialServer;
-    if (savedToken) {
-      connect(savedToken).catch(e => { setStatus(e.message); show(e.message, 'bad'); });
+  showPair();
+}
+$('#btnPair').addEventListener('click', async () => {
+  const key = $('#pairKey').value.trim().toUpperCase();
+  if (!key) return pairError('Enter the kiosk key first.');
+  $('#btnPair').disabled = true;
+  pairError('Pairing…');
+  try {
+    const r = await call('apiKioskAuthenticateV2', key);
+    if (!r || !r.kioskToken) throw new Error('No pairing token returned by server.');
+    K.token = r.kioskToken;
+    let boot;
+    try {
+      boot = await call('apiKioskBootstrap', K.token);
+    } catch (e) {
+      if (!/UNAUTHORIZED|Please sign in/i.test(e.message) || !r.keyToken) throw e;
+      K.token = r.keyToken;
+      boot = await call('apiKioskBootstrap', K.token);
+    }
+    localStorage.setItem('ats_kiosk_token', K.token);
+    $('#pairKey').value = '';
+    pairError('');
+    applyBoot(boot);
+  } catch (e) {
+    let extra = '';
+    try {
+      const d = await call('apiKioskDiagnostics');
+      extra = ' [key=' + (d.keyPresent ? 'set(' + d.keyLength + ')' : 'MISSING') +
+        ', db=' + (d.spreadsheetConfigured ? 'ok' : 'MISSING') +
+        ', url=' + (d.webAppUrl ? 'ok' : 'MISSING') + ']';
+    } catch (ignore) {}
+    pairError(e.message + extra);
+  } finally { $('#btnPair').disabled = false; }
+});
+
+function applyBoot(boot) {
+  K.boot = boot;
+  $('#pairScreen').classList.add('hidden');
+  $('#kioskApp').classList.remove('hidden');
+  $('#headAgency').textContent = boot.agencyName || 'ATTENDANCE MONITORING SYSTEM';
+  $('#headOffice').textContent = (boot.office || 'Office') + ' — Employee Time In / Out Kiosk';
+  $('#pairAgency').textContent = (boot.agencyName || 'Attendance') + ' Kiosk';
+  $('#tabFace').classList.toggle('hidden', !boot.faceEnabled);
+  if (boot.scannerPageUrl && boot.webAppUrl) {
+    const sep = boot.scannerPageUrl.indexOf('?') >= 0 ? '&' : '?';
+    const link = $('#btnStandaloneScanner');
+    let href = boot.scannerPageUrl + sep + 'server=' + encodeURIComponent(boot.webAppUrl);
+    if (K.token) href += '&key=' + encodeURIComponent(K.token);
+    link.href = href;
+    link.classList.remove('hidden');
+  }
+  startClock();
+  loadBoard();
+  K.timer = setInterval(loadBoard, 15000);
+  if (boot.faceEnabled) loadDescriptors();
+}
+
+function startClock() {
+  const tick = () => {
+    const d = new Date();
+    $('#clockTime').textContent = d.toLocaleTimeString('en-US', { hour12: true });
+    $('#clockDate').textContent = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  };
+  tick(); setInterval(tick, 1000);
+}
+
+/* ---------- Live board ---------- */
+async function loadBoard() {
+  try {
+    const r = await call('apiKioskBoard', K.token);
+    const b = r.board, c = b.counts;
+    $('#boardDate').textContent = '· ' + b.date;
+    $('#lastUpdate').textContent = 'Updated ' + b.time;
+    $('#cntOnDuty').textContent = c.onDuty;
+    $('#cntLoggedOut').textContent = c.loggedOut;
+    $('#cntOnLeave').textContent = c.onLeave;
+    $('#sumOnDuty').textContent = c.onDuty;
+    $('#sumLoggedOut').textContent = c.loggedOut;
+    $('#sumOnLeave').textContent = c.onLeave;
+    $('#sumNotIn').textContent = c.notIn;
+
+    const person = (p, cls) => '<div class="person ' + cls + '">' +
+      '<span class="ptime">' + esc(p.timeIn || '—') + '</span>' +
+      '<div class="pname">' + esc(p.name) + '</div>' +
+      '<div class="pmeta">' + esc(p.position || p.employeeType || '') + (p.office ? ' · ' + esc(p.office) : '') + '</div>' +
+      (p.leaveCode ? '<span class="tag">' + esc(p.leaveCode) + ' — ' + esc(p.leaveName) +
+        (p.officialBusiness ? ' (Official Business)' : '') + '</span>' : '') +
+      (p.verification === 'UNVERIFIED' ? '<span class="tag warn">UNVERIFIED</span>' : '') +
+      '</div>';
+
+    const fill = (id, list, cls, empty) => {
+      $(id).innerHTML = list.length ? list.map(p => person(p, cls)).join('') : '<div class="empty">' + empty + '</div>';
+    };
+    fill('#listOnDuty', b.groups.ON_DUTY, '', 'Nobody currently on duty');
+    fill('#listLoggedOut', b.groups.LOGGED_OUT, 'out', 'No completed time records yet');
+    fill('#listOnLeave', b.groups.ON_LEAVE, 'leave', 'No official business or leave today');
+    $('#recentScans').innerHTML = b.recent.length
+      ? b.recent.map(x => '<span><b>' + esc(x.time) + '</b> ' + esc(x.name) + ' — ' + esc(slotLabel(x.logType)) +
+        (x.verification === 'UNVERIFIED' ? ' ⚠' : '') + '</span>').join('')
+      : '—';
+  } catch (e) {
+    if (/UNAUTHORIZED|Please sign in/i.test(e.message)) {
+      clearInterval(K.timer);
+      localStorage.removeItem('ats_kiosk_token');
+      showPair();
+      pairError('Pairing expired. Enter the kiosk key again.');
+    }
+    $('#lastUpdate').textContent = 'Update failed — retrying…';
+  }
+}
+
+/* ---------- Scan result banner ---------- */
+function showResult(r, bad) {
+  const box = $('#resultBanner');
+  box.className = 'result-banner' + (bad ? ' bad' : '');
+  box.innerHTML = '<div class="rb-name">' + esc(bad ? '⚠ ' + (r.message || 'Not recorded') : '✓ ' + (r.employee ? r.employee.name : '')) + '</div>' +
+    '<div class="rb-detail">' + esc(bad ? '' : (slotLabel(r.logType) + ' · ' + r.time +
+      (r.needsReview ? ' · Flagged for HR review' : ''))) + '</div>';
+  clearTimeout(K.bannerTimer);
+  K.bannerTimer = setTimeout(() => box.classList.add('hidden'), 6000);
+}
+
+async function record(payload) {
+  try {
+    const r = await call('apiKioskRecord', K.token, Object.assign({ deviceInfo: 'KIOSK_TABLET' }, payload));
+    showResult(r, false);
+    loadBoard();
+  } catch (e) { showResult({ message: e.message }, true); }
+}
+
+/* ---------- Camera & image helpers ---------- */
+function stopCameras() {
+  if (K.scanner) { try { K.scanner.stop().catch(() => {}); } catch (e) {} K.scanner = null; }
+  if (K.faceStream) { K.faceStream.getTracks().forEach(t => t.stop()); K.faceStream = null; }
+}
+
+function loadImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read the photo.')); };
+    img.src = url;
+  });
+}
+
+async function startQr() {
+  stopCameras();
+  if (!window.Html5Qrcode) return showResult({ message: 'QR library unavailable — check internet.' }, true);
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return showResult({ message: 'Camera API unavailable. Use “Take photo” or open the standalone scanner.' }, true);
+  }
+  try {
+    K.scanner = new Html5Qrcode('qrReader', { verbose: false });
+    await K.scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: 260 },
+      async text => {
+        try { await K.scanner.pause(true); } catch (e) {}
+        await record({ method: 'QR', qrToken: text, verification: K.faceFailed ? 'QR_FALLBACK' : undefined });
+        K.faceFailed = false;
+        try { await K.scanner.resume(); } catch (e) {}
+      },
+      () => {}
+    );
+    $('.scanner-hint').textContent = 'Place your QR code in front of the camera';
+  } catch (e) {
+    const errName = e && e.name ? e.name : '';
+    const errMsg = e && e.message ? e.message : String(e);
+    if (errName === 'NotAllowedError' || /Permission|policy|denied/i.test(errMsg)) {
+      const hasStandalone = !$('#btnStandaloneScanner').classList.contains('hidden');
+      showResult({
+        message: 'Live camera blocked by Google Apps Script iframe (' + (errName || 'NotAllowedError') + '). ' +
+          (hasStandalone ? 'Tap “Open full live camera scanner” above, or use “Take photo”.' : 'Use “Take photo” or configure SCANNER_PAGE_URL in Admin → Settings.')
+      }, true);
+    } else if (errName === 'NotFoundError') {
+      showResult({ message: 'No camera detected on this tablet.' }, true);
+    } else if (errName === 'NotReadableError') {
+      showResult({ message: 'Camera is currently in use by another app.' }, true);
+    } else {
+      showResult({ message: 'Camera error: ' + errMsg }, true);
     }
   }
+}
+
+async function scanQrPhoto(file) {
+  if (!file) return;
+  if (!window.jsQR) return showResult({ message: 'QR decoder unavailable — check internet.' }, true);
+  try {
+    const img = await loadImageFile(file);
+    const scale = Math.min(1, 1400 / Math.max(img.width || 1, img.height || 1));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round((img.width || 1) * scale);
+    canvas.height = Math.round((img.height || 1) * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'attemptBoth' });
+    if (!code || !code.data) {
+      return showResult({ message: 'No QR code found in that photo. Try again with better lighting.' }, true);
+    }
+    await record({ method: 'QR', qrToken: code.data, verification: K.faceFailed ? 'QR_FALLBACK' : undefined });
+    K.faceFailed = false;
+  } catch (e) {
+    showResult({ message: 'Photo scan failed: ' + (e.message || e) }, true);
+  }
+}
+
+/* ---------- Face recognition ---------- */
+async function loadDescriptors() {
+  try { const r = await call('apiKioskFaceDescriptors', K.token); K.descriptors = r.descriptors || []; }
+  catch (e) { console.error(e); }
+}
+async function loadModels() {
+  if (K.modelsLoaded) return;
+  if (!window.faceapi) throw new Error('Face library unavailable — check internet.');
+  $('#faceMsg').textContent = 'Loading face models…';
+  await Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+  ]);
+  K.modelsLoaded = true;
+}
+function distance(a, b) {
+  if (!a || !b || a.length !== b.length) return 999;
+  let s = 0; for (let i = 0; i < a.length; i++) s += (a[i] - b[i]) * (a[i] - b[i]);
+  return Math.sqrt(s);
+}
+async function matchAndRecordFace(inputEl) {
+  const det = await faceapi.detectSingleFace(
+    inputEl,
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })
+  ).withFaceLandmarks().withFaceDescriptor();
+  if (!det) throw new Error('No face detected. Adjust lighting and try again.');
+  if (!K.descriptors.length) await loadDescriptors();
+  if (!K.descriptors.length) throw new Error('No employees are enrolled for face recognition.');
+  const desc = Array.from(det.descriptor);
+  let best = null, dist = 999;
+  K.descriptors.forEach(d => { const dd = distance(desc, d.descriptor); if (dd < dist) { dist = dd; best = d; } });
+  $('#faceMsg').textContent = 'Best match: ' + (best ? best.name : 'none') + ' (' + dist.toFixed(3) + ')';
+  if (!best || dist > (K.boot.threshold || 0.6)) {
+    K.faceFailed = true;
+    showResult({ message: 'Face not recognized. Use QR — entry will be flagged for HR.' }, true);
+    switchMethod('QR');
+    return;
+  }
+  await record({ method: 'FACE', employeeId: best.employeeId });
+}
+async function startFace() {
+  stopCameras();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    $('#faceMsg').textContent = 'Live camera unavailable — tap “Take photo”.';
+    return showResult({ message: 'Live camera unavailable. Tap “Take photo” instead.' }, true);
+  }
+  try {
+    await loadModels();
+    try {
+      K.faceStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+    } catch (e) {
+      K.faceStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+    const v = $('#faceVideo'); v.srcObject = K.faceStream; await v.play();
+    $('#faceMsg').textContent = 'Look at the camera, then tap Verify & record.';
+    $('#btnFaceCapture').classList.remove('hidden');
+  } catch (e) {
+    const errName = e && e.name ? e.name : '';
+    const errMsg = e && e.message ? e.message : String(e);
+    if (errName === 'NotAllowedError' || /Permission|policy|denied/i.test(errMsg)) {
+      $('#faceMsg').textContent = 'Live camera blocked by Apps Script iframe — tap “Take photo”.';
+      showResult({ message: 'Live face camera blocked (' + (errName || 'NotAllowedError') + '). Tap “Take photo” instead.' }, true);
+    } else {
+      $('#faceMsg').textContent = 'Camera/model error: ' + errMsg;
+      K.faceFailed = true;
+      showResult({ message: 'Face unavailable (' + errMsg + ') — use “Take photo” or QR.' }, true);
+    }
+  }
+}
+async function captureFace() {
+  try {
+    await matchAndRecordFace($('#faceVideo'));
+  } catch (e) {
+    K.faceFailed = true;
+    showResult({ message: e.message + ' — use QR fallback.' }, true);
+  }
+}
+async function scanFacePhoto(file) {
+  if (!file) return;
+  try {
+    await loadModels();
+    $('#faceMsg').textContent = 'Analyzing photo…';
+    const img = await loadImageFile(file);
+    await matchAndRecordFace(img);
+  } catch (e) {
+    K.faceFailed = true;
+    $('#faceMsg').textContent = e.message || 'Face photo error';
+    showResult({ message: (e.message || e) + ' — use QR fallback.' }, true);
+  }
+}
+
+function switchMethod(which) {
+  stopCameras();
+  const qr = which === 'QR', face = which === 'FACE', manual = which === 'MANUAL';
+  $('#tabQr').classList.toggle('active', qr);
+  $('#tabManual').classList.toggle('active', manual);
+  $('#tabFace').classList.toggle('active', face);
+  $('#qrPane').classList.toggle('active', qr);
+  $('#manualPane').classList.toggle('active', manual);
+  $('#facePane').classList.toggle('active', face);
+  if (manual) $('#manualQr').focus();
+}
+function submitManualQr() {
+  const token = $('#manualQr').value.trim();
+  if (!token) return showResult({ message: 'Enter a QR code first.' }, true);
+  record({ method: 'QR', qrToken: token });
+  $('#manualQr').value = '';
+  $('#manualQr').focus();
+}
+$('#tabQr').addEventListener('click', () => switchMethod('QR'));
+$('#tabManual').addEventListener('click', () => switchMethod('MANUAL'));
+$('#tabFace').addEventListener('click', () => switchMethod('FACE'));
+$('#btnManualQr').addEventListener('click', submitManualQr);
+$('#manualQr').addEventListener('keydown', e => { if (e.key === 'Enter') submitManualQr(); });
+$('#btnQrStart').addEventListener('click', startQr);
+$('#btnQrStop').addEventListener('click', stopCameras);
+['qrFileCapture', 'qrFileGallery'].forEach(id => {
+  $('#' + id).addEventListener('change', e => {
+    scanQrPhoto(e.target.files && e.target.files[0]);
+    e.target.value = '';
+  });
+});
+$('#btnFaceStart').addEventListener('click', startFace);
+$('#faceFileCapture').addEventListener('change', e => {
+  scanFacePhoto(e.target.files && e.target.files[0]);
+  e.target.value = '';
+});
+$('#btnFaceStop').addEventListener('click', () => {
+  stopCameras(); $('#btnFaceCapture').classList.add('hidden'); $('#faceMsg').textContent = 'Tap “Start camera” or “Take photo”';
+});
+$('#btnFaceCapture').addEventListener('click', captureFace);
+
+init();
 </script>
 </body>
 </html>
