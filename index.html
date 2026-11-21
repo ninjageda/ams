@@ -591,7 +591,7 @@ button,input{font:inherit}
     return code && code.data ? code.data : '';
   }
 
-  /* ---------- Non-Blocking Background QR Queue ---------- */
+  /* ---------- Zero-Delay Continuous QR Loop & Non-Blocking Queue ---------- */
   function updateQueueUI() {
     const pending = scanQueue.length + (queueWorkerRunning ? 1 : 0);
     const badge = $('queueBadge');
@@ -603,20 +603,20 @@ button,input{font:inherit}
     }
     if (scanning) {
       $('qrHint').textContent = pending > 0
-        ? 'Ready for next scan · Syncing ' + pending + ' in background…'
-        : 'Hold QR code steady inside the frame';
+        ? 'Scanner active — next person can scan immediately (' + pending + ' syncing)…'
+        : 'Scanner active — hold QR code inside the frame';
     }
   }
 
   async function scanLoop() {
     if (!scanning) return;
-    const text = await decodeFrameFast();
-    if (text) {
-      enqueueQrCode(text);
-    }
-    setTimeout(() => {
-      if (scanning) requestAnimationFrame(scanLoop);
-    }, 80);
+    try {
+      const text = await decodeFrameFast();
+      if (text) {
+        enqueueQrCode(text);
+      }
+    } catch (e) { /* keep loop alive on transient frame errors */ }
+    if (scanning) requestAnimationFrame(scanLoop);
   }
 
   function enqueueQrCode(text) {
@@ -626,34 +626,39 @@ button,input{font:inherit}
     }
 
     const now = Date.now();
+    // Purge expired cooldown entries
     for (const [k, ts] of recentTokens.entries()) {
-      if (now - ts > SAME_QR_COOLDOWN_MS) recentTokens.delete(k);
+      if (now - ts >= SAME_QR_COOLDOWN_MS) recentTokens.delete(k);
     }
 
-    // Only block duplicate scans of the exact same QR code for 15 seconds;
-    // any other employee can scan immediately without waiting.
+    // Same QR scanned within cooldown (< 1 min): silently ignore and keep scanning immediately
     if (recentTokens.has(text)) return;
-    recentTokens.set(text, now);
 
-    // Visual reticle flash + audio beep
+    // Lock this QR token immediately and record exact capture timestamp
+    recentTokens.set(text, now);
+    const capturedAt = new Date();
+    const localTime = capturedAt.toLocaleTimeString('en-US', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+
+    // Immediate visual reticle flash + audio beep (non-blocking)
     const box = $('qrBox');
     if (box) {
       box.classList.add('flash');
-      setTimeout(() => box.classList.remove('flash'), 220);
+      setTimeout(() => box.classList.remove('flash'), 180);
     }
     playScanBeep(true);
 
-    const localTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     scanQueue.push({
       qr: text,
       verification: faceFailed ? 'QR_FALLBACK' : '',
-      scannedAt: new Date().toISOString(),
+      scannedAt: capturedAt.toISOString(),
       localTime: localTime,
       retries: 0
     });
     faceFailed = false;
 
-    showBanner('✓ QR Captured (' + localTime + ')', 'Queued for sync — next employee may scan now.', 'info');
+    showBanner('✓ Captured at ' + localTime, 'Ready for next person immediately…', 'info');
     updateQueueUI();
     processScanQueue();
   }
@@ -675,16 +680,19 @@ button,input{font:inherit}
           scannedAt: item.scannedAt,
           device: navigator.userAgent.slice(0, 120)
         });
+        // Only update banner if another person hasn't just scanned a newer badge in the last 1.5s
         const empName = (r.employee && r.employee.name) || r.message || 'Attendance Recorded';
         const detail = r.logType
           ? (slotLabel(r.logType) + (r.time ? ' · ' + r.time : '') + (r.needsReview ? ' · Flagged for HR review' : ''))
           : (r.message || '');
-        showBanner('✓ ' + empName, detail, 'ok');
+        if (scanQueue.length === 0) {
+          showBanner('✓ ' + empName, detail, 'ok');
+        }
       } catch (e) {
         if (item.retries < 1 && /did not respond|Cannot reach/i.test(e.message)) {
           item.retries++;
           scanQueue.unshift(item);
-          await new Promise(res => setTimeout(res, 1000));
+          await new Promise(res => setTimeout(res, 800));
         } else {
           recentTokens.delete(item.qr);
           playScanBeep(false);
@@ -695,6 +703,7 @@ button,input{font:inherit}
 
     queueWorkerRunning = false;
     updateQueueUI();
+    // Refresh live board only after all queued back-to-back scans finish syncing
     loadBoard();
   }
 
