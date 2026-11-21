@@ -486,12 +486,14 @@ button,input{font:inherit}
         '</div>';
 
       const fill = (id, list, cls, empty) => {
-        $(id).innerHTML = list && list.length ? list.map(p => person(p, cls)).join('') : '<div class="empty">' + empty + '</div>';
+        const el = $(id.replace(/^#/, ''));
+        if (!el) return;
+        el.innerHTML = list && list.length ? list.map(p => person(p, cls)).join('') : '<div class="empty">' + empty + '</div>';
       };
       const groups = b.groups || {};
-      fill('#listOnDuty', groups.ON_DUTY, '', 'Nobody currently on duty');
-      fill('#listLoggedOut', groups.LOGGED_OUT, 'out', 'No completed time records yet');
-      fill('#listOnLeave', groups.ON_LEAVE, 'leave', 'No official business or leave today');
+      fill('listOnDuty', groups.ON_DUTY, '', 'Nobody currently on duty');
+      fill('listLoggedOut', groups.LOGGED_OUT, 'out', 'No completed time records yet');
+      fill('listOnLeave', groups.ON_LEAVE, 'leave', 'No official business or leave today');
 
       const recent = b.recent || [];
       $('recentScans').innerHTML = recent.length
